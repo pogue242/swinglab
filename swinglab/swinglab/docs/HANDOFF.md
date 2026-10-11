@@ -954,5 +954,37 @@ Contract changes between the tracks: `docs/CONTRACT_CHANGES.md`.
 
 ### 14 UI log
 (UI session: newest first.)
+- 2026-10-11: **redesign, concept A** (item 10, plus item 7's chat chip and item 9 kept). `web/index.html`
+  hitter page rebuilt after `potential_redesign_donotread.html`: swings rail on the left (newest first, swings
+  of one recording numbered "1/3"; a horizontal row on phones); swing header with type chip and a "data notes"
+  popover (why hit/miss/dry + quality warnings); hero card with one stage and a **Video / 3D** toggle (video
+  default when an overlay exists, choice remembered), round play button, ¼×, clickable phase marks; stats panel
+  (Overall, Form, Contact, Bat mph measured/predicted), kinematic-sequence chart with phase bands and peak dots,
+  phase table (speeds at load / foot plant / peaks / contact, peak order); coach card (headline, cue, drill,
+  "Show full report" with training plan); Measurements card with tabs **Key / Power / Sequencing / Posture**
+  (group score on each tab, "i" opens the help text); History card (tiles, score and bat-speed charts, table)
+  replaces the Progress tab; **Ask coach** opens a drawer with suggested questions including "My lower back
+  hurts when I swing". **System status is no longer linked** (developers: open `#status`). Swing files with
+  `NaN` now open (read as null; FUNC asked to fix at the source). Checked on Adam's 3 real swings (Record3D,
+  10 Oct) and the stand-in swings (hit, miss, dry with warnings, no video, no features) at 1366 px (headless
+  Edge screenshot) and 375 px (no horizontal scroll); no console errors. Not yet seen by the team.
+- 2026-10-10: **upload dialog feedback** (team test). (1) The result message was green on green: the status
+  pills' bare `.ok/.wait/.no` classes leaked onto `.upmsg.ok`; pills are now `.pill.ok` etc. and messages are
+  themed cards (navy / green / red-50 with a colored left edge). (2) After "Uploaded…" nothing happened when the
+  analysis failed. The dialog now shows steps **Upload → Queued → Analyzing → Ready** with upload %, the queue
+  countdown, elapsed analysis time, then either opens the swing by itself or shows the failure in plain words
+  (missing pose model, broken/cut-off file, no swing found, unreadable depth) with the raw reason under
+  "Details". Also added a global `[hidden]{display:none!important}`. Checked on stand-in data: real failure
+  (bad .r3d) end to end, success path with mocked `/api/status`, 1366 px and 375 px. Root cause of the team's
+  stuck upload: `data\models\pose_landmarker_heavy.task` missing on that laptop (`python scripts\get_pose_model.py`).
+- 2026-10-10: **too many measurements** (item 9). The swing view now shows **Key measurements**: the focus
+  measurement first, then the 5 with the biggest top-vs-bottom-third effect in the lab data (top hip speed, top
+  chest speed, biggest hip–shoulder separation, hands out front, front leg straightening). Each row: value, a
+  plain verdict vs. the top-third band ("like / less than / more than top hitters", green when on the good
+  side), top-third value, range bar. The full grouped table (22 rows with help text) is folded under
+  **All measurements**. Panel height at 1366×900: 2910 px → 581 px. Checked at desktop and 375 px (no
+  horizontal scroll) on stand-in swings built from the lab reference (hit, miss, dry with warnings, a focus
+  outside the 5, a record with no features); **not yet on the real Matteo/Wilson userdata**. FUNC can override
+  the list with an optional `key_features` array in `app.json` (read defensively, see CONTRACT_CHANGES.md).
 - 2026-10-10: phone upload page moved out of `api/server.py` into `web/upload.html` (served unchanged at `/upload`)
   so the UI track owns it.
