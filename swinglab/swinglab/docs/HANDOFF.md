@@ -924,6 +924,16 @@ Contract changes between the tracks: `docs/CONTRACT_CHANGES.md`.
 
 ### 14 FUNC log
 (FUNC session: newest first.)
+- 2026-10-11 morning: **Fast demo.** `python api\server.py --demo`: drop folders checked every 2 s (a dropped file
+  must be unchanged 3 s, so half-copied recordings aren't read); **phase 1** saves the scores as soon as the pose
+  is measured (measured: **28 s** after a 2.9 s recording landed); **phase 2** adds the ball check, the AI report and
+  the annotated video to the same swing (~35–90 s more, mostly Gemini). **Live capture** (`scripts\live_capture.py
+  --hitter <Name>`, `pip install record3d`, Record3D USB streaming on the phone): keeps the last seconds of the
+  iPhone's USB stream and, on Enter after each swing, writes them as a recording into the hitter's drop folder.
+  Checked without a phone by replaying a real recording through the live buffer: elite match 55 vs 56 for the
+  original. The USB connection itself is untested (no phone here). An automatic swing trigger from frame
+  motion caught only 4 of 7 swings, so it was dropped. Fixed: the processed-recordings list keyed recordings by
+  their position in the folder, so adding one re-ran every later recording (old keys migrate).
 - 2026-10-11 night: **Elite-match scoring** (`swinglab/elite.py`, agreed with the user): 8 factors as % of elite
   (top third of the lab by size-adjusted bat speed), weighted (legs 2.5, turns 2, ...); Gemini guides the coaching
   (watches the clip with the numbers, `report.coach_view`) and does not score. Lab check: elite median 96, rest 93,
