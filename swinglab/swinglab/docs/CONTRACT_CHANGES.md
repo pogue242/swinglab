@@ -7,6 +7,13 @@ FUNC may add fields freely. Renames, removals and changed meanings go here, newe
 (none yet)
 
 ## Requested by UI
+- 2026-10-11 (bug, FUNC side): swing JSON files contain bare `NaN` (e.g. `"...r_pelvis":NaN`), which is not
+  valid JSON; browsers refuse the file. Seen in Adam's swings 1 and 2 of 3 (`Adam__2026-10-10--22-25-12-01/-02`).
+  The viewer now reads NaN/Infinity as null, but please write `null` (`json.dumps(..., allow_nan=False)` after
+  replacing NaN), so other readers work too.
+- 2026-10-11 (question): `series.pelvis_vel` / `torso_vel` go negative (e.g. −199 °/s hips at contact). The
+  chart clips at 0 and the phase table shows the signed value. Is negative "turning back"? If so, fine; if it is
+  a sign/handedness issue, please fix at the source.
 - 2026-10-10 (bug, FUNC side): a **failed** analysis is still recorded in `drop/.swinglab_processed.json`
   (`"swings": 0`), so the recording is never retried, even after the cause is fixed (seen: missing
   `pose_landmarker_heavy.task`). Re-uploading the same file is then silently skipped and the viewer can only say

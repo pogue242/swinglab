@@ -927,6 +927,20 @@ Contract changes between the tracks: `docs/CONTRACT_CHANGES.md`.
 
 ### 14 UI log
 (UI session: newest first.)
+- 2026-10-11: **redesign, concept A** (item 10, plus item 7's chat chip and item 9 kept). `web/index.html`
+  hitter page rebuilt after `potential_redesign_donotread.html`: swings rail on the left (newest first, swings
+  of one recording numbered "1/3"; a horizontal row on phones); swing header with type chip and a "data notes"
+  popover (why hit/miss/dry + quality warnings); hero card with one stage and a **Video / 3D** toggle (video
+  default when an overlay exists, choice remembered), round play button, ¼×, clickable phase marks; stats panel
+  (Overall, Form, Contact, Bat mph measured/predicted), kinematic-sequence chart with phase bands and peak dots,
+  phase table (speeds at load / foot plant / peaks / contact, peak order); coach card (headline, cue, drill,
+  "Show full report" with training plan); Measurements card with tabs **Key / Power / Sequencing / Posture**
+  (group score on each tab, "i" opens the help text); History card (tiles, score and bat-speed charts, table)
+  replaces the Progress tab; **Ask coach** opens a drawer with suggested questions including "My lower back
+  hurts when I swing". **System status is no longer linked** (developers: open `#status`). Swing files with
+  `NaN` now open (read as null; FUNC asked to fix at the source). Checked on Adam's 3 real swings (Record3D,
+  10 Oct) and the stand-in swings (hit, miss, dry with warnings, no video, no features) at 1366 px (headless
+  Edge screenshot) and 375 px (no horizontal scroll); no console errors. Not yet seen by the team.
 - 2026-10-10: **upload dialog feedback** (team test). (1) The result message was green on green: the status
   pills' bare `.ok/.wait/.no` classes leaked onto `.upmsg.ok`; pills are now `.pill.ok` etc. and messages are
   themed cards (navy / green / red-50 with a colored left edge). (2) After "Uploaded…" nothing happened when the
