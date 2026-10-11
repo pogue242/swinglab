@@ -313,6 +313,11 @@ svg text{font-family:var(--body);font-size:10px;fill:var(--muted)}
 @keyframes spin{to{transform:rotate(360deg)}}
 /* dialogs + toast */
 dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);padding:20px;max-width:420px;width:calc(100% - 32px);overflow-x:hidden}
+#demoDlg{max-width:520px}
+#demoDlg p{font-size:14px;line-height:1.45;margin:8px 0}
+#demoDlg code{display:block;margin:8px 0;padding:8px 10px;border-radius:6px;background:var(--navy);color:#fff;font-size:12px;overflow-x:auto;white-space:pre}
+.sitefoot{padding:8px 24px 28px;font-size:12px;color:var(--muted);text-align:center}
+.sitefoot a{color:inherit}
 dialog::backdrop{background:rgb(12 35 64 / .4)}
 dialog h2{font:700 24px var(--display);letter-spacing:.04em}
 .form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -489,6 +494,7 @@ dialog h2{font:700 24px var(--display);letter-spacing:.04em}
   <form class="chatform" id="chatForm"><input id="chatQ" maxlength="500" placeholder="Ask about this swing" aria-label="Question for the coach"><button id="chatGo">Ask</button></form>
   <p class="fine">Answers use this swing's measurements only. For pain that is sharp or doesn't go away, see a doctor or athletic trainer.</p>
 </aside>
+<footer class="sitefoot" id="sitefoot" hidden>Reference ranges from <a href="https://github.com/drivelineresearch/openbiomechanics">Driveline Baseball OpenBiomechanics</a> (CC BY-NC-SA 4.0).</footer>
 
 <dialog id="upDlg">
   <form method="dialog" id="upForm">
@@ -507,6 +513,20 @@ dialog h2{font:700 24px var(--display);letter-spacing:.04em}
     <div class="upmsg" id="upMsg" role="status"></div>
     <div class="phone" id="upPhone" hidden><div id="qr"></div><div>Or upload <b>from a phone</b> on the same Wi-Fi: scan the code or open<br><a id="upPhoneUrl" target="_blank"></a><br><span id="upDropHint"></span></div></div>
     <div class="dlgbtns"><button class="btn" value="cancel" formnovalidate>Close</button><button class="btn primary" id="upGo" value="go">Upload</button></div>
+  </form>
+</dialog>
+
+<dialog id="demoDlg">
+  <form method="dialog">
+    <h2>Analyze your own swings</h2>
+    <p>This site shows Matteo's and Wilson's swings. To analyze your own, download SwingLab and run it on your computer.</p>
+    <p><a id="demoZip" href="#">Download ZIP</a></p>
+    <p>Or clone it:</p>
+    <code id="demoClone"></code>
+    <p>Then double-click <b>start.bat</b> (Windows) or run <b>./start.sh</b> (Mac or Linux). That installs what SwingLab needs and opens this same viewer.</p>
+    <p>Recording needs an iPhone Pro with LiDAR, and the Record3D app with the RGBD export add-on. <a id="demoRec" href="#" target="_blank" rel="noopener">Recording instructions</a></p>
+    <p class="fine">The coach chat also runs only on your computer, where your own swings stay.</p>
+    <div class="dlgbtns"><button class="btn primary" value="cancel">Close</button></div>
   </form>
 </dialog>
 
@@ -539,6 +559,7 @@ let SERVED=false, APP=null;
 try{APP=EMB?EMB.app:await fetch("data/app.json").then(r=>{if(!r.ok)throw 0;return r.json()})}catch(e){APP={feature_info:{},population:{},target:{},groups:{},status:null}}
 APP.feature_info=APP.feature_info||{};APP.population=APP.population||{};
 try{if(!EMB){const r=await fetch("api/profiles");SERVED=r.ok}}catch(e){}
+const DEMO=!!(EMB&&!SERVED);   // the published site: videos and a download prompt, no upload and no chat
 const GROUPS=["power","transfer","posture"], GLAB={power:"Power",transfer:"Sequencing",posture:"Posture"};
 const PHASE_LABEL={load:"Load",foot_plant:"Foot plant",contact:"Contact"};
 let PROFILES=[], PID=null, SWINGS=[], SI=0, REC=null; const CACHE={};
@@ -586,7 +607,10 @@ function renderHome(){
   $("#hgrid").querySelectorAll(".hcard").forEach(b=>b.onclick=()=>go(`#hitter/${b.dataset.pid}`));
   const hn=$("#homeNew");if(hn)hn.onclick=()=>openProfile(null);
   $("#reflink").hidden=!lab;if(lab){$("#reflink").innerHTML=`<b>Reference:</b> Driveline lab swings · ${lab.n_swings} swings <span aria-hidden="true">&rarr;</span>`;$("#reflink").onclick=()=>go(`#hitter/${lab.id}`)}
-  $("#homeNote").innerHTML=SERVED?"":"Read-only view. Run <b>python api\\server.py</b> to add hitters, upload swings and ask the coach.";
+  const lead=document.querySelector("#view-home .lead");
+  if(lead)lead.textContent=DEMO?"Matteo and Wilson.":"Pick up where you left off, or add someone new.";
+  $("#homeNote").innerHTML=SERVED?"":DEMO?`Demo of Matteo and Wilson. <a href="#" id="homeDemo">Analyze your own swings</a>`:"Read-only view. Run <b>python api\\server.py</b> to add hitters, upload swings and ask the coach.";
+  const hd=$("#homeDemo");if(hd)hd.onclick=e=>{e.preventDefault();openDemo()};
 }
 function renderMenu(){
   const p=PROFILES.find(x=>x.id===PID);$("#hmenuWrap").hidden=!p;if(!p)return;
@@ -629,7 +653,7 @@ function setView(v){VIEW=v;const has=SWINGS.length>0;
 function go(h){if(location.hash===h)route();else location.hash=h}
 async function route(){
   const h=location.hash||"#home", m=h.match(/^#hitter\/(.+)$/), home=!m&&h!=="#status";
-  $("#view-home").hidden=!home;$("#view-hitter").hidden=home;$("#coachBtn").hidden=home||h==="#status";drawer(false);
+  $("#view-home").hidden=!home;$("#view-hitter").hidden=home;$("#coachBtn").hidden=DEMO||home||h==="#status";drawer(false);
   if(home){$("#hmenuWrap").hidden=true;renderHome();return}
   if(h==="#status"){if(!PID&&PROFILES[0])await selectProfile(PROFILES[0].id);setView("status");return}
   const pid=decodeURIComponent(m[1]);if(!PROFILES.find(p=>p.id===pid)){go("#home");return}
@@ -774,9 +798,10 @@ function loop(now){const dt=(now-last)/1000;last=now;
    the score card and the slow-motion replay. Paths are relative to the user-data folder. */
 const ov=$("#ov");let ovMeta=null,ovOK=false,ovSeeking=false,ovURL=null;
 function setOverlay(s){
-  ov.pause();ovMeta=SERVED&&s.overlay&&s.overlay.frame_times&&s.overlay.frame_times.length?s.overlay:null;ovOK=false;
+  ov.pause();ovMeta=(SERVED||DEMO)&&s.overlay&&s.overlay.frame_times&&s.overlay.frame_times.length?s.overlay:null;ovOK=false;
   $("#vtoggle").hidden=true;stageMode("3d");if(!ovMeta){ov.removeAttribute("src");ov.load();return}
-  const want=ovMeta.path;fetch("userdata/"+want,{cache:"no-cache"}).then(r=>{if(!r.ok)throw r.status;return r.blob()}).then(b=>{   // a blob seeks on any server
+  const want=ovMeta.path,root=DEMO?(EMB.media_root||"media/"):"userdata/";
+  fetch(root+want,{cache:"no-cache"}).then(r=>{if(!r.ok)throw r.status;return r.blob()}).then(b=>{   // a blob seeks on any server
     if(!ovMeta||ovMeta.path!==want)return;if(ovURL)URL.revokeObjectURL(ovURL);ovURL=URL.createObjectURL(b);ov.src=ovURL;ov.playbackRate=slow?0.25:1})
    .catch(()=>{ovMeta=null})}
 ov.addEventListener("loadeddata",()=>{if(!ovMeta)return;ovOK=true;ov.playbackRate=slow?0.25:1;$("#vtoggle").hidden=false;stageMode(PREF_MODE);syncVideo()});
@@ -895,7 +920,9 @@ function renderCoach(){
         ${steps.length?`<h3>Drill · ${esc(r.drill.name)}</h3><ol>${steps.map(x=>`<li>${esc(x)}</li>`).join("")}</ol>`:""}
       </div><div>
         ${plan?`<h3>Workouts, stretches and drills</h3>${r.training_focus?`<p>${esc(r.training_focus)}</p>`:""}<ul>${plan}</ul><p class="fine">${esc((s.payload&&s.payload.training_disclaimer)||"")}</p>`:""}
-      </div></div></details>`;
+      </div></div></details>
+    ${DEMO?`<p class="fine"><a href="#" id="demoCoach">Clone the repo to chat with the coach about your own swings.</a></p>`:""}`;
+  const dc=$("#demoCoach");if(dc)dc.onclick=e=>{e.preventDefault();openDemo()};
 }
 
 /* ---------- coach chat drawer (POST /api/chat, served by api/server.py) ---------- */
@@ -1096,7 +1123,14 @@ const upDlg=$("#upDlg");let upFiles=[], INFO=null;
 const KIND=n=>/\.(r3d|zip)$/i.test(n)?"LiDAR recording":/yardstick/i.test(n)?"yardstick (scale) clip":/\.(mov|mp4|m4v)$/i.test(n)?"slow-motion clip":"not a recording";
 function fmtMB(b){return b>1e6?`${(b/1e6).toFixed(1)} MB`:`${Math.round(b/1e3)} KB`}
 function renderUpList(){$("#upList").innerHTML=upFiles.map(f=>`<li><span>${esc(f.name)}</span><small>${esc(KIND(f.name))} · ${fmtMB(f.size)}</small></li>`).join("");$("#upGo").disabled=!upFiles.length}
+function openDemo(){
+  const repo=(EMB&&EMB.repo_url)||"https://github.com/pogue242/baseball-batting-analyze";
+  $("#demoZip").href=(EMB&&EMB.zip_url)||repo+"/archive/refs/heads/main.zip";
+  $("#demoClone").textContent="git clone "+repo+".git";
+  $("#demoRec").href=(EMB&&EMB.recording_url)||repo+"/blob/main/swinglab/swinglab/docs/RECORDING_PLAN.md";
+  $("#demoDlg").showModal()}
 async function openUpload(){
+  if(DEMO){openDemo();return}
   if(!SERVED){toast("Uploading needs the SwingLab server: python api\\server.py");return}
   const real=PROFILES.filter(p=>!p.synthetic);
   if(!real.length){toast("Create a hitter first");openProfile(null);return}
@@ -1188,9 +1222,9 @@ setInterval(pollLatest,4000);
 
 /* ---------- start ---------- */
 buildScene();placeCam();renderStatus();playUI("play");requestAnimationFrame(loop);
-$("#liveWrap").hidden=!SERVED;$("#uploadBtn").hidden=!SERVED;
+$("#liveWrap").hidden=!SERVED;$("#uploadBtn").hidden=!SERVED&&!DEMO;$("#sitefoot").hidden=!DEMO;
 await loadProfiles();
-if(EMB&&!location.hash&&PROFILES[0])location.hash=`#hitter/${PROFILES[0].id}`;   // the single-file viewer opens on its only profile
+if(EMB&&!location.hash&&PROFILES.length===1)location.hash=`#hitter/${PROFILES[0].id}`;   // one embedded profile opens directly; a demo with several stays on the home cards
 await route();
 pollLatest();
 })();
