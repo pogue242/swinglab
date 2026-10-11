@@ -2,10 +2,11 @@
 
   python scripts\\rescore.py                 # every profile's swings in the user-data folder
   python scripts\\rescore.py --profile wilson
+  python scripts\\rescore.py --reports        # also rewrite the coach reports (Gemini if a key is set)
 
 Recomputes analysis (scores, elite match, focus, grades) from rec["features"], keeps the hit/miss/dry mode and
-the ball-contact score, and refreshes the recording summaries' numbers. The coach text is NOT rewritten: it may
-quote the old numbers until the swing is analyzed again with Gemini.
+the ball-contact score, and refreshes the recording summaries' numbers. Without --reports the coach text is not
+rewritten and may quote the old numbers.
 """
 import argparse
 import json
@@ -31,6 +32,8 @@ def rescore(rec: dict, hitter: dict) -> dict:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--profile")
+    ap.add_argument("--reports", action="store_true", help="also rewrite each swing's coach report")
+    ap.add_argument("--no-gemini", action="store_true", help="with --reports: template reports only")
     a = ap.parse_args()
     for pr in profiles.list_profiles():
         if pr.get("synthetic") or (a.profile and pr["id"] != a.profile):
@@ -46,6 +49,8 @@ def main():
                 continue
             before = rec["analysis"]["scores"].get("overall")
             rescore(rec, hitter)
+            if a.reports:      # Gemini watches the clip again when a key is set (see pipeline._coach)
+                pipeline._coach(rec, hitter, rec.get("measured"), not a.no_gemini)
             f.write_text(pipeline.dump_json(rec), encoding="utf-8")
             by_rec.setdefault(rec.get("recording") or rec["id"], []).append((f, rec))
             print(f"{rec['id']:34s} {before} -> {rec['analysis']['scores']['overall']}")
