@@ -18,6 +18,7 @@ folder. Processing starts automatically once uploads have stopped for ``--deboun
   GET  /api/hitters       profile names (upload page)
   GET  /api/profiles      profiles with swing counts;  POST: create;  PUT/DELETE /api/profiles/{id}
   GET  /api/profiles/{id}/swings   the profile's swing history (oldest first)
+  GET  /api/profiles/{id}/recordings  swings grouped by recording + whole-recording video and summary
   GET  /api/latest        the most recently analyzed swing (the viewer pops new swings up)
   GET  /userdata/swings/… swing records and annotated videos (user data, outside the app)
   POST /api/chat          {"payload": swing payload, "history": [...], "question": "..."} -> {"answer"}
@@ -206,6 +207,21 @@ def create_app(inbox_root: str | Path | None = None, userdata: str | Path | None
         if profiles.get(pid, userdata) is None:
             raise HTTPException(404, "no such profile")
         return {"swings": _swing_list(pid)}
+
+    @app.get("/api/profiles/{pid}/recordings")
+    def profile_recordings(pid: str):
+        if profiles.get(pid, userdata) is None:
+            raise HTTPException(404, "no such profile")
+        base = f"userdata/swings/{pid}/"
+        recs = profiles.recordings(pid, userdata)
+        for rc in recs:
+            rc["summary_url"] = base + rc["summary"] if rc["summary"] else None
+            if rc["video"]:
+                rc["video"]["url"] = base + rc["video"]["file"]
+            for sw in rc["swings"]:
+                sw["url"] = base + sw["file"]
+                sw["video_url"] = base + sw["video_file"] if sw["video_file"] else None
+        return {"recordings": recs}
 
     @app.get("/api/latest")
     def latest():

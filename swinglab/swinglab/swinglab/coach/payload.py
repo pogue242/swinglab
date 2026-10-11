@@ -48,8 +48,10 @@ def build(analysis: dict, feats: dict, hitter: dict, measured: dict | None = Non
         "top_strengths": {g: [c for c in cs[::-1] if c["effect_mph"] > 0][:1] for g, cs in analysis["contributions"].items()},
         "measurements": {k: m(k) for k in features.FEATURES if k in feats},
         "tree_path_bat_speed": analysis["tree_path"].get("bat_speed", []),
-        "notes": ["scores are percentiles vs. 677 Driveline lab swings (98 hitters, mostly college)",
+        "notes": ["each score grades the swing's measurements against 677 Driveline lab swings (98 hitters, "
+                  "mostly college): inside the lab's middle half = full marks, far outside = 0",
                   "effects are size-adjusted associations, not guarantees"],
+        "not_graded": [n["label"] for n in analysis.get("not_graded", [])],
     }
     areas = exercises.weak_areas(analysis["contributions"])
     payload["training_areas"] = [exercises.AREAS[a] for a in areas]

@@ -408,7 +408,24 @@ def lift_world(cap: Capture, world: dict[int, dict[str, tuple[float, float, floa
         info["lift"] = "mediapipe_3d_with_lidar_anchor"
         info["mediapipe_scale"] = round(scale, 3)
         info["anchor_frames"] = round(float(ok[list(world)].mean()), 3)
-    return {n: np.where(np.isfinite(rel[n][:, :1]), rel[n] + anchor, np.nan) for n in names}
+    out = {n: np.where(np.isfinite(rel[n][:, :1]), rel[n] + anchor, np.nan) for n in names}
+    return {n: fill_gaps(P, cap.timestamps if hasattr(cap, "timestamps") else idx / cap.fps) for n, P in out.items()}
+
+
+def fill_gaps(P: np.ndarray, t: np.ndarray, max_gap_s: float = 0.15) -> np.ndarray:
+    """Linear interpolation over gaps up to ``max_gap_s`` (pose runs on every n-th frame); longer gaps stay NaN."""
+    ok = np.isfinite(P[:, 0])
+    if ok.sum() < 2 or ok.all():
+        return P
+    ti = t[ok]
+    j = np.searchsorted(ti, t)
+    prev = ti[np.clip(j - 1, 0, len(ti) - 1)]
+    nxt = ti[np.clip(j, 0, len(ti) - 1)]
+    fill = ~ok & (j > 0) & (j < len(ti)) & (nxt - prev <= max_gap_s)
+    out = P.copy()
+    for a in range(P.shape[1]):
+        out[fill, a] = np.interp(t[fill], ti, P[ok, a])
+    return out
 
 
 WORLD_UP_ARKIT = np.array([0.0, 1.0, 0.0])  # pass as ``up`` to skeleton.build for world-frame joints

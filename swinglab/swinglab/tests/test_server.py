@@ -173,3 +173,30 @@ def test_profiles_create_edit_delete(tmp_path):
     d = c.delete("/api/profiles/matteo").json()
     assert d["deleted"] == "matteo" and "trash" in d["swings_moved_to"] and Path(d["swings_moved_to"], "a.json").exists()
     assert c.get("/api/profiles/matteo/swings").status_code == 404
+
+
+def test_recordings_group_swings_with_the_whole_recording_video(tmp_path):
+    """Whole-recording view (issue 4): swings grouped by recording, times in the recording's video."""
+    c, _ = make(tmp_path)
+    d = tmp_path / "userdata" / "swings" / "wilson"
+    d.mkdir(parents=True, exist_ok=True)
+    for k, peak in ((1, 10.3), (2, 12.4)):
+        rec = {"id": f"lidar 1-0{k}", "recording": "lidar 1", "recording_t0": 10.0, "mode": "dry",
+               "window": {"start": peak - 1.6, "peak": peak, "end": peak + 0.8, "partial": k == 1},
+               "analysis": {"scores": {"form": 40.0 + k}, "focus": {"label": "Hip turn"}},
+               "overlay": {"path": f"swings/wilson/lidar 1-0{k}.mp4"}, "recorded_at": "2026-10-10 10:00:00"}
+        (d / f"lidar 1-0{k}.json").write_text(json.dumps(rec), encoding="utf-8")
+    (d / "old.json").write_text(json.dumps({"id": "old", "analysis": {"scores": {}}}), encoding="utf-8")
+    (d / "_summary_lidar 1.json").write_text(json.dumps({"n_swings": 2, "report": {"headline": "Two swings"},
+                                                         "recording_video": {"t0": 10.0}}), encoding="utf-8")
+    (d / "_recording_lidar 1.mp4").write_bytes(b"x")
+    recs = c.get("/api/profiles/wilson/recordings").json()["recordings"]
+    rec = next(r for r in recs if r["recording"] == "lidar 1")
+    assert rec["n_swings"] == 2 and rec["headline"] == "Two swings"
+    assert rec["video"]["url"] == "userdata/swings/wilson/_recording_lidar 1.mp4" and rec["video"]["t0"] == 10.0
+    assert rec["summary_url"] == "userdata/swings/wilson/_summary_lidar 1.json"
+    s1, s2 = rec["swings"]
+    assert s1["t"] == {"start": -1.3, "peak": 0.3, "end": 1.1} and s1["partial"] and not s2["partial"]
+    assert s2["video_url"] == "userdata/swings/wilson/lidar 1-02.mp4" and s2["focus"] == "Hip turn"
+    assert any(r["recording"] == "old" and r["video"] is None and r["swings"][0]["t"] is None for r in recs)
+    assert c.get("/api/profiles/nobody/recordings").status_code == 404

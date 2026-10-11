@@ -406,7 +406,7 @@ unless it ran on real recordings.
 
 | Check | Result |
 |---|---|
-| Unit + integration tests | 2026-10-10 Windows laptop (Python 3.12.10 venv): **47 passed** after item 1 (42 original + 5 Windows regressions); **57** after item 2 (+1 live, deselected by default); 61 after item 3; 71 after item 4; 74 after item 5; 89 after item 6; 97 after item 7; **104 passed** after item 8 (final run 3 min 22 s, through `export_demo.py` too). Real-data tests (`test_real_record3d_*`) ran on the 2 night test files in `data\captures`. |
+| Unit + integration tests | **2026-10-11 (func/scoring): 127 passed**, 1 live deselected. 2026-10-10 Windows laptop (Python 3.12.10 venv): **47 passed** after item 1 (42 original + 5 Windows regressions); **57** after item 2 (+1 live, deselected by default); 61 after item 3; 71 after item 4; 74 after item 5; 89 after item 6; 97 after item 7; **104 passed** after item 8 (final run 3 min 22 s, through `export_demo.py` too). Real-data tests (`test_real_record3d_*`) ran on the 2 night test files in `data\captures`. |
 | Windows setup (2026-10-10) | Fresh venv, `pip install -e ".[phone,gemini,server,dev]"` OK (mediapipe 1.1.0, opencv 5.0, lzfse 0.4.2, numpy 2.5, pandas 3.0, scikit-learn 1.9). `setup_data.py` ran end to end. The laptop only had the Microsoft Store Python 3.11 (`python`/`python3` in WindowsApps); python.org 3.12 installed with `winget install Python.Python.3.12 --scope user`. **Always run through `.venv\Scripts\python.exe` (or activate the venv)**: plain `python3` is the Store stub. Fixed: text files without an encoding (cp1252 on Windows: `build_uml.py` crashed on SPEC.md, Gemini prompts garbled "—"), piped output crashing on "→"/emoji, `export_demo.py` running pytest with `python3` (reported "14 failed" from the wrong interpreter). Guarded by `tests/test_windows.py`. |
 | Driveline download | all hitting assets fetched, checksums match (re-verified on Windows 2026-10-10) |
 | Landmark meanings (not in Driveline's data dictionary) | checked by geometry: `lhjc`/`rhjc` are **hands** (7.6 cm from wrist); hips are `left_hip`/`right_hip` |
@@ -417,7 +417,7 @@ unless it ran on real recordings.
 | Static rotation angles vs. Driveline (pelvis/torso/separation at foot plant) | **weak**: r ≈ 0.35–0.49 for right-handed hitters, ≈ 0 for left-handed. Likely Driveline's K-Vest angle convention; speeds agree. Open issue. |
 | Bat speed model (athlete-grouped 5-fold CV, 30 fps features) | R² 0.32, MAE 3.1 mph (guess-average 3.8). Size only R² 0.20, mechanics only 0.17. Windows rebuild 2026-10-10 (newer sklearn/pandas): R² 0.314, MAE 3.14 (guess-average 3.81); size only 0.197, mechanics only 0.163. |
 | Exit velocity model | R² 0.16, MAE 5.1 mph (guess-average 5.7). Windows rebuild: R² 0.154, MAE 5.11 (5.70). |
-| Scores on training swings | spread 0–100, median 50 |
+| Scores on training swings | 2026-10-11 lab-range grades: Form median 70 (IQR 62–78). TestSet2 (real, dry): Wilson Form 31–61, Matteo 23–26, i.e. **does not yet match the team ranking (Matteo better)**. Old ridge percentiles: spread 0–100, median 50 |
 | Viewer | four demo swings render; switching swings, phase jumps, status tab, top-third target bands work (jsdom); published as artifact |
 | Clean-download rebuild | `setup_data.py` from empty `data/` in 90 s; pure-Python downloader also verified on pitching assets |
 | Excel data sample | 8 tabs written and re-read |
@@ -434,7 +434,7 @@ unless it ran on real recordings.
 | Round 2, 2026-10-10 night (team review) | ✅ synthetic + browser, **119 passed**. **Toss and miss**: `ballflight.ball_events` (tee hit / toss hit = path breaks / miss / none) with ball-likeness (round, steady size, travels) and **gravity** checks (3–20 m/s² from the ball's own size); synthetic toss hit: contact frame, exit speed, launch exact; miss detected; bat speed within 1% (tossed ball masked from tape tracking); the two night videos: a lit window and a drifting light first passed as balls → now both dry. **Miss → contact 0.** Recording summaries count hits/misses/dry, form/contact stats; **Gemini writes every swing and every 2+ swing summary** (`GEMINI_MAX_SWINGS` to cap). **Drop folders** `userdata\drop\<Name>\` checked every 15 s. **Upload**: in-app dialog (drag and drop, auto file type, progress, QR code for the phone page), phone page in MLB colors. **UI**: home screen ("Choose a hitter" cards with latest overall + sparkline, New hitter, Driveline reference), navy top bar with hitter menu (switch, edit, delete, all hitters), Upload / Ask coach, MLB palette (navy #0C2340, red #BF0D3E, steel #4A7FB5), system status moved to a footer link. `record3d` 1.4.1 has a Windows cp312 wheel (live USB stream feasible; not built). |
 | Shared-folder flow | ✅ synthetic session folder → pairing → analysis → `index.json` → served viewer lists the swing with per-stage ✓ |
 | Training plan | ✅ chosen only from the library; invented exercises dropped (test) |
-| Swing finder (long recordings) | ✅ exactly 1 swing found in each of 677 lab clips; 5/5 on a synthetic 21 s session; none when the hitter is still |
+| Swing finder (long recordings) | ✅ **real recordings (TestSet2, 2026-10-11): 9/9 Wilson swings found (1 flagged partial), Matteo 7 and 8 found, Matteo 6 (starts at the follow-through) not counted.** Earlier: exactly 1 swing found in each of 677 lab clips; 5/5 on a synthetic 21 s session; none when the hitter is still |
 | Size handling | height normalizes distances; height/weight/age/level are model inputs; scores use size-adjusted outcomes; out-of-range warning (test) |
 | Gemini live call | ✅ **live, 2026-10-10** (lab data payloads). Key read from the git-ignored `swinglab/.env` (new `config.load_dotenv`; real env vars win). Pinned **`gemini-3.6-flash`** (`--ping`: OK in 1.4 s, served as itself). Google re-routes names: `gemini-flash-latest` and `gemini-3.7-flash` were served by 3.8-flash, `gemini-3.5-flash` by 3.6; `gemini-2.5-flash` is listed but returns 404; 3.8/3.5 returned 503 "high demand" at times. **Free tier = 20 requests/day per model** (both 3.6-flash and flash-latest ran out during this session) → fallback chain 3.6-flash → flash-latest → 3.1-flash-lite → flash-lite-latest on 429/5xx, then the template. Default thinking made one report take > 60 s (504) on every model; `thinking_level="low"` did it in 2.8 s. Structured reports took 10–20 s with default thinking. All 4 demo swings + the demo session now have Gemini reports (3× 3.6-flash/flash-latest, 1× 3.1-flash-lite), **0 numbers outside the payload** after fixes. `export_demo.py` reuses a cached Gemini report when the payload is unchanged (`--refresh-gemini` to force) so reruns don't spend quota. `pytest -m live` runs the live test (passes); normal runs never call the API. **For Saturday: ~90 swings exceed the free quota → enable billing on the AI Studio project, or accept template reports for some swings.** |
 | Gemini safeguards (2026-10-10) | **57 passed** after item 2. Number check found two real issues in live output, both fixed: Gemini wrote HTML entities ("3 &#215; 5" → now unescaped), and "per 10 swings" comes from a payload key (keys now count). `coach/numbers.py`: every number in a report's text must trace to the payload (rounding, sign, ms→s, ratio→% allowed; small counts allowed only in drill steps/prescriptions); result stored in `report_source.unsupported_numbers`. Checked: the template reports of ~100 lab swings come out clean (no false alarms), invented numbers are caught. **Bad key → template** verified against the real API (400 API_KEY_INVALID, fallback in ~2 s), also for session report and chat. 60 s request timeout (`GEMINI_TIMEOUT_S`). |
@@ -924,6 +924,33 @@ Contract changes between the tracks: `docs/CONTRACT_CHANGES.md`.
 
 ### 14 FUNC log
 (FUNC session: newest first.)
+- 2026-10-11, branch `func/scoring` (issues 1–4). **Real recordings: TestSet2** (Matteo lidar 6/7/8,
+  Wilson lidar 1/2, all dry swings), re-run with `--no-gemini`.
+  - **Root cause of most bad numbers**: the camera faces the hitter's chest, so in the swing the shoulders
+    and hips turn toward / away from the camera and one of each pair hides behind the body; the LiDAR depth
+    under the hidden joint is the near side's. Depth-only joints flipped the shoulder/hip lines by ~180°
+    (Matteo 6: separation 198°, hip turn −22°), made false hand-speed peaks and hid real ones.
+    **Fix**: `capture.lift_world`: body shape from MediaPipe's own 3D (world) landmarks, rotated into the
+    room by the camera pose and scaled by the LiDAR torso length; position from the LiDAR torso (median over
+    shoulders/hips, smoothed). `quality.lift` says which lift ran. Depth-only remains the fallback.
+  - **Swing detection (issue 2)**: with the new lift, 9/9 of Wilson's swings are found (were 7, plus a bat
+    waggle counted as a swing). `find_swings(bats=)` now counts only shoulder turns **toward the pitcher**
+    (a recording that starts at the follow-through, Matteo 6, no longer yields a "swing") and flags swings
+    with < 0.6 s of recording before the peak as `window.partial` (Wilson lidar 1 swing 1).
+    Checked by eye on contact sheets of the color frames: lidar 1 swings at ≈0.3, 2.2, 4.9, 8.3, 12.0, 14.6,
+    17.8 s; lidar 2 at ≈2.2, 5.3 s.
+  - **Ball detection (issue 3)**: dry is the default. The blob tracker's hit/miss on the LiDAR video stands
+    only when YOLOX-S (OpenCV zoo, Apache-2.0, `cv2.dnn`, `scripts/get_ball_model.py`) sees a sports ball
+    near the tracked ball in 2+ frames before contact. TestSet2: **10/10 dry** (was 9/10 hit or miss).
+    ⚠️ Not yet run on a recording **with** a ball: whether YOLOX finds a real 60 fps tee/toss ball is untested.
+  - **Scoring (issue 1)**: rule-based grades against the lab spread (`scoring.grade_swing`,
+    `data/models/lab_ranges.json`); 7 measurements the front camera can't measure yet are shown but not
+    graded (`scoring.NOT_GRADED`: rotation speeds/hip turn read 2–3× low, peak-timing gaps below one frame,
+    forward tilt toward the camera). Old ridge-percentile scores kept as `analysis.scores_lab_model`.
+    Lab swings now: Form median 70 (IQR 62–78).
+  - **Sequence view (issue 4, FUNC part)**: `GET /api/profiles/{id}/recordings`, whole-recording video
+    `_recording_<rec>.mp4`, `recording_t0`, `summary.recording_video` (see `docs/CONTRACT_CHANGES.md`).
+  - Tools: `scripts/compare_lab.py` (phone vs lab table per feature).
 
 ### 14 UI log
 (UI session: newest first.)

@@ -44,3 +44,5 @@ cov = ["height_m", "mass_kg", "athlete_age", "level"]
 S = pd.DataFrame([scoring.analyze(r[model.MECHANICS].to_dict(), models, scorers, r[cov].to_dict())["scores"] for _, r in tab.iterrows()])
 print("score distribution on training swings:"); print(S.describe().round(1).loc[["mean","25%","50%","75%"]])
 print("saved", config.MODELS / "swing_models.joblib")
+(config.MODELS / "lab_ranges.json").write_text(json.dumps(scoring.lab_ranges(tab), indent=1), encoding="utf-8")
+print("saved", config.MODELS / "lab_ranges.json")

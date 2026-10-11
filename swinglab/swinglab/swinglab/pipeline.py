@@ -522,6 +522,7 @@ def analyze_recording(lidar: str | Path | None, slowmo: str | Path | None, hitte
             r = {"id": rid, "hitter": hitter.get("name", ""), "window": asdict(w) if w else None,
                  "stages": {"lidar": {"ok": False, "error": f"{type(e).__name__}: {e}", "trace": traceback.format_exc()[-800:]}}}
         r["recording"] = Path(lidar).name
+        r["recording_t0"] = float(t[0])          # window times minus this = seconds into the recording's video
         recs.append(r)
     good = [r for r in recs if "analysis" in r]
     assigned, matching = {}, None
@@ -544,6 +545,13 @@ def analyze_recording(lidar: str | Path | None, slowmo: str | Path | None, hitte
                        else (cues.session_report(summary), {"source": "template"}))
         summary.update(hitter=hitter.get("name", ""), report=srep.model_dump(), report_source=sinfo,
                        warnings=hitter_warnings(hitter), recording=Path(lidar).name)
+        v = q.get("_video") or {}
+        if v.get("path"):
+            summary["recording_video"] = {"source": v["path"], "fps": v.get("fps"), "t0": float(t[0]),
+                                          "swings": [{"id": r["id"], **{k: round(r["window"][k] - float(t[0]), 3)
+                                                                        for k in ("start", "peak", "end")},
+                                                      "partial": r["window"].get("partial", False)}
+                                                     for r in good if r.get("window")]}
     return {"recs": recs, "summary": summary, "n_swings": len(wins)}
 
 
@@ -564,15 +572,51 @@ def analyze_session(lidar: str | Path, hitter: dict, *, use_gemini: bool = True,
     return out["recs"], out["summary"] or {"n_swings": len(out["recs"])}
 
 
-def save_session(summary: dict, session: str, out_root: Path | None = None) -> Path:
-    """Summary of a recording with 2+ swings: <out_root>/swings/<folder>/_summary_<recording>.json."""
+def save_session(summary: dict, session: str, out_root: Path | None = None, *, render_video: bool = True) -> Path:
+    """Summary of a recording with 2+ swings: <out_root>/swings/<folder>/_summary_<recording>.json,
+    plus the whole recording as a plain video, _recording_<recording>.mp4 (render_recording), whose
+    path goes into summary["recording_video"]["path"] (relative to out_root)."""
     out_root = Path(out_root or config.USERDATA)
     d = out_root / "swings" / session
     d.mkdir(parents=True, exist_ok=True)
-    p = d / f"_summary_{Path(str(summary.get('recording') or 'recording')).stem}.json"
+    stem = Path(str(summary.get("recording") or "recording")).stem
+    rv = summary.get("recording_video")
+    if render_video and rv and rv.get("source"):
+        try:
+            path = render_recording(rv["source"], d / f"_recording_{stem}", fps=rv.get("fps") or 60.0)
+            rv["path"] = path.relative_to(out_root).as_posix()
+        except Exception as e:
+            rv["error"] = f"{type(e).__name__}: {e}"[:300]
+    p = d / f"_summary_{stem}.json"
     p.write_text(json.dumps(summary, separators=(",", ":")), encoding="utf-8")
     rebuild_index(out_root)
     return p
+
+
+def render_recording(source: str | Path, out_base: Path, *, fps: float = 60.0, out_fps: float = 30.0,
+                     height: int = 960) -> Path:
+    """The whole recording's color video as a plain H.264 MP4 (``out_base`` + .mp4), every
+    fps/out_fps-th frame, scaled to ``height`` px: what the viewer's whole-recording view plays.
+    Video second s = recording time t0 + s (summary["recording_video"]["t0"])."""
+    import cv2
+    from .render import open_writer
+    step = max(1, int(round(fps / out_fps)))
+    writer = path = None
+    try:
+        for i, fr in enumerate(capture.iter_frames(source)):
+            if i % step:
+                continue
+            h, w = fr.shape[:2]
+            size = (int(round(w * height / h / 2)) * 2, height)
+            if writer is None:
+                writer, path, _ = open_writer(out_base, fps / step, size)
+            writer.write(cv2.resize(fr, size, interpolation=cv2.INTER_AREA))
+    finally:
+        if writer is not None:
+            writer.release()
+    if path is None:
+        raise ValueError(f"no frames in {source}")
+    return path
 
 
 def render_overlay(rec: dict, out_base: Path, out_root: Path) -> None:
