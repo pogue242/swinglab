@@ -21,6 +21,10 @@ Status: ✅ built and tested · ⚠️ built, not yet run on real recordings ·
 | `SPEC.md` | Product specification: goals 1–7, user interaction, data, models, status, UML |
 | `HANDOFF.md` | Working log for Claude Code: setup, verification numbers, gotchas, recording plan (section 9), shared folder (9b), next-session prompts (section 10) |
 | `FILES.md` | This guide |
+| `NEXT_SESSION_PROMPT.md` | Shared context for the two parallel sessions: file ownership, data contract, labeled issue list ([FUNC] / [UI] / [BOTH]) |
+| `NEXT_SESSION_FUNC.md`, `NEXT_SESSION_UI.md` | Paste-in prompts for the functionality and UI sessions |
+| `CONTRACT_CHANGES.md` | Swing JSON / API changes and requests between the two sessions |
+| `TEAM_QA.md` | Answers to the team's questions (rounds 1 and 2) |
 | `RECORDING_PLAN.md` | Full field recording instructions: clips and long sessions, camera setup, shot list, log, transfer, troubleshooting |
 | `FRESH_START_BRIEF.md` | Self-contained brief for a second, from-scratch build session |
 | `uml.html` | The SPEC's diagrams rendered as a page (built by `scripts/build_uml.py`) |
@@ -94,6 +98,7 @@ Status: ✅ built and tested · ⚠️ built, not yet run on real recordings ·
 | File | Purpose | Status |
 |---|---|---|
 | `index.html` | Viewer: Swing tab (3D replay, ghost, **annotated video synced with the replay**, scores, speeds, coach card, training plan, **Ask the coach chat**, sequencing chart, measurements vs top third), Session tab (incl. slow-mo matching notes), Pipeline status tab. Loads `data/demo.json` and, when served, `data/index.json` | ✅ (checked in the browser) |
+| `upload.html` | Phone upload page, served at `/upload` (owned by the UI session) | ✅ |
 | `data/overlays/*.mp4` | Annotated videos of the demo swings | ✅ |
 | `data/demo.json` | Demo data (4 lab swings, reference ghost, ranges, demo session, status) | ✅ |
 | `dist/swinglab-viewer.html` | Single-file version (published as the artifact) | ✅ |

@@ -8,6 +8,8 @@ models, status, UML) is `docs/SPEC.md`; diagrams render in `docs/uml.html`.** Re
 session prompts, in order. Section 11 is a standing directive: **test and
 verify everything, and keep the status table in section 6 honest.**
 
+> **2026-10-10: work is now split into two parallel sessions.** **[FUNC]** functionality (`docs/NEXT_SESSION_FUNC.md`) and **[UI]** look (`docs/NEXT_SESSION_UI.md`). Shared context, file ownership and the labeled issue list: `docs/NEXT_SESSION_PROMPT.md`. Each track logs in section 14. Section 10's older prompts are superseded.
+
 ---
 
 ## ☀️ Saturday morning checklist (first real recordings, in order)
@@ -880,7 +882,7 @@ Still open:
 - **Profiles and user data outside the app**: `userdata/` (git-ignored). Shipping the Synthetic profile
   is a choice: copy `userdata/swings/synthetic` + its `profiles.json` entry.
 
-**Done since: drop folders + in-app/phone upload (section 6, round 2).** **Task — hands-free demo capture (next; `record3d` has a Windows wheel):** today the fastest path is Record3D → Share → Files → the
+**Done since: drop folders + in-app/phone upload (section 6, round 2).** **[FUNC] Task — hands-free demo capture (next; `record3d` has a Windows wheel):** today the fastest path is Record3D → Share → Files → the
 Google Drive folder, with `python api\server.py --watch "G:\My Drive\SwingLab"` and the viewer's
 auto-show. Phone taps remain. The hands-free version streams the LiDAR phone live:
 1. Record3D's paid "Wi-Fi Streaming & RGBD Videos" / USB streaming with the `record3d` Python package
@@ -893,7 +895,7 @@ auto-show. Phone taps remain. The hands-free version streams the LiDAR phone liv
    Effort: about a day, plus testing with the phone. Risk: whether Record3D's streaming works with the free
    version and on Windows; Stray Scanner has no streaming.
 
-**Task — LiDAR phone only (no 240 fps camera): feasibility and plan (not started)**
+**[FUNC] Task — LiDAR phone only (no 240 fps camera): feasibility and plan (not started)**
 - What works with one phone: body 3D (now); hit vs dry (now, from its color video); **ball exit
   speed and launch angle roughly**: at 60 fps a 35 m/s ball moves 58 cm per frame, so it is seen in
   ~2–4 frames before leaving the frame; its depth from LiDAR at 256x192 is unreliable (small, fast), so
@@ -906,3 +908,24 @@ auto-show. Phone taps remain. The hands-free version streams the LiDAR phone liv
 - Recording tip found today: filmed from the chest side, the **rear arm hides behind the body** in
   much of the swing. The planned 30–45° turn toward the catcher's side should help; check it in the
   first field clip (`placed_by_bone_length` for rear elbow/wrist).
+
+## 14. Parallel tracks (from 2026-10-10)
+
+Labels: **[FUNC]** functionality session, **[UI]** UI/look session, **[BOTH]** split (FUNC builds the data/API,
+UI builds the display). The full labeled list is in `docs/NEXT_SESSION_PROMPT.md`.
+
+| Track | Items |
+|---|---|
+| [FUNC] | scoring; swing detection (7 of 9 found); false ball detection; generic Gemini text; pain questions in chat; live streaming (later); LiDAR-only ball tracking (later) |
+| [BOTH] | sequence view (whole recording + its swings); grounded kinematic-sequence rules; app-like upload |
+| [UI] | too many measurements and other UI fixes; match `potential_redesign_donotread.html`; hide pipeline status from users; chat chip for pain questions |
+
+Contract changes between the tracks: `docs/CONTRACT_CHANGES.md`.
+
+### 14 FUNC log
+(FUNC session: newest first.)
+
+### 14 UI log
+(UI session: newest first.)
+- 2026-10-10: phone upload page moved out of `api/server.py` into `web/upload.html` (served unchanged at `/upload`)
+  so the UI track owns it.
