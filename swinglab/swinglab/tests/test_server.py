@@ -309,6 +309,41 @@ def test_a_new_recording_does_not_rerun_the_old_ones(tmp_path):
     assert sorted(calls) == ["a lidar 1.r3d", "b lidar 2.r3d", "c lidar 3.r3d"]
 
 
+def test_record_swing_session_lands_as_one_r3d_and_is_analyzed(tmp_path):
+    """Record swing from the browser (fake phone): start, the hitter stops moving, the session saves itself as one
+    .r3d in the hitter's drop folder and is analyzed for that hitter right away."""
+    import time
+    pytest.importorskip("lzfse")
+    from test_live import _fake_connect
+    calls, streams = [], []
+    fake = lambda l, v, h, **kw: (calls.append((l, h["name"])) or {"recs": [{"stages": {}, "analysis": {"scores": {}}}], "summary": None})  # noqa: E731
+
+    def connect(sink, on_stopped=None):
+        streams.append(_fake_connect(sink, on_stopped, still_after_s=1.0))
+        return streams[-1]
+
+    c, app = make(tmp_path, analyze_recording=fake, live_idle_s=1.0, live_connect=connect)
+    try:
+        assert c.post("/api/live/start", json={"hitter": "Nobody"}).status_code == 404
+        assert c.post("/api/live/connect").json()["state"] == "idle"
+        r = c.post("/api/live/start", json={"hitter": "Wilson"})
+        assert r.status_code == 200 and r.json()["state"] == "recording", r.text
+        assert c.post("/api/live/start", json={"hitter": "Wilson"}).status_code == 409
+        deadline = time.time() + 15
+        while not calls and time.time() < deadline:
+            time.sleep(0.2)
+        st = c.get("/api/live/status").json()
+        assert st["state"] == "saved" and st["saved"]["reason"].startswith("still"), st
+        path = Path(st["saved"]["path"])
+        assert path.parent == tmp_path / "userdata" / "drop" / "Wilson" and path.suffix == ".r3d"
+        assert [(Path(l).name, h) for l, h in calls] == [(path.name, "Wilson")]
+        assert any("session ended" in line for line in c.get("/api/status").json()["log"])
+        assert not list((tmp_path / "userdata" / "live_staging").glob("*"))
+    finally:
+        for s in streams:
+            s["done"] = True
+
+
 def test_old_positional_state_keys_still_count_as_done(tmp_path):
     from swinglab import inbox
     p = inbox.Pair(session="Matteo", swing="004", lidar="X/lidar 9.r3d", slowmo=None, hitter="Matteo", method="lidar_only")

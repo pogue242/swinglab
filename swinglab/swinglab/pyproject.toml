@@ -11,7 +11,7 @@ dependencies = [
 phone = ["opencv-python", "mediapipe", "lzfse", "imageio-ffmpeg"]
 gemini = ["google-genai"]
 server = ["fastapi", "uvicorn", "python-multipart"]
-live = ["record3d"]   # USB streaming from the iPhone (scripts/live_capture.py)
+live = ["record3d"]   # USB streaming from the iPhone (the viewer's Record swing, swinglab/live.py)
 dev = ["pytest"]
 
 [tool.setuptools]

@@ -565,7 +565,14 @@ def analyze_recording(lidar: str | Path | None, slowmo: str | Path | None, hitte
                           "stages": {"lidar": {"ok": False, "error": f"{type(e).__name__}: {e}"}}}],
                 "summary": None, "n_swings": 0}
     t, joints, q = lifted
-    wins = session.find_swings(t, joints, bats=hitter["bats"])
+    if not {"l_wrist", "r_wrist"} <= joints.keys():
+        return {"recs": [{"id": Path(lidar).stem, "hitter": hitter.get("name", ""), "window": None, "no_swing": True,
+                          "recording": Path(lidar).name,
+                          "stages": {"lidar": {"ok": False, "error": "no swing found: the body tracker found no hitter in "
+                                               "this recording (the whole body has to be in the frame)"}}}],
+                "summary": None, "n_swings": 0}
+    from .live import LIVE_SWING_MINIMUMS, is_live_recording
+    wins = session.find_swings(t, joints, bats=hitter["bats"], **(LIVE_SWING_MINIMUMS if is_live_recording(lidar) else {}))
     recs = []
     for k, w in enumerate(wins or [None]):
         rid = Path(lidar).stem if len(wins) <= 1 else f"{Path(lidar).stem}-{k + 1:02d}"

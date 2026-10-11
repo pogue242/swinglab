@@ -316,7 +316,12 @@ def process(root: str | Path, *, analyze_recording=None, save=None, save_session
             + (f" yardstick={Path(p.yardstick).name}" if p.yardstick else ""))
         extra = {k: v for k, v in (("yardstick", p.yardstick), ("tape", bat_tape(h)),
                                    ("slowmo_clips", p.slowmo_clips or None)) if v is not None}
-        out = analyze_recording(p.lidar, p.slowmo, h, **extra)
+        try:
+            out = analyze_recording(p.lidar, p.slowmo, h, **extra)
+        except Exception as e:            # one bad recording must not stop the others in this pass
+            log(f"      !! {p.session}/{p.swing}: analysis crashed: {type(e).__name__}: {e}")
+            out = {"recs": [{"id": Path(p.lidar or p.slowmo or p.swing).stem, "hitter": prof["name"],
+                             "stages": {"analysis": {"ok": False, "error": f"{type(e).__name__}: {e}"}}}]}
         recs = out.get("recs") or []
         saved = []
         for r in recs:

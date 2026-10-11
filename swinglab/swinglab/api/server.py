@@ -22,6 +22,11 @@ folder. Processing starts automatically once uploads have stopped for ``--deboun
   GET  /api/latest        the most recently analyzed swing (the viewer pops new swings up)
   GET  /userdata/swings/… swing records and annotated videos (user data, outside the app)
   POST /api/chat          {"payload": swing payload, "history": [...], "question": "..."} -> {"answer"}
+  POST /api/live/connect  start the iPhone's USB stream (Record3D) for the preview
+  POST /api/live/start    {"hitter"}: record a session; it ends after --live-idle s of stillness (or /api/live/stop)
+                          and lands as one .r3d in the hitter's drop folder, analyzed right away
+  GET  /api/live/status   recording state, elapsed, frames, motion, auto-stop countdown, last saved session
+  GET  /api/live/preview  MJPEG of what the phone sees
 
 Windows asks once to allow Python through the firewall (choose Private networks): phones need it.
 LAN tool for the hackathon: no login; anyone on the Wi-Fi can upload recordings.
@@ -29,6 +34,7 @@ LAN tool for the hackathon: no login; anyone on the Wi-Fi can upload recordings.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import datetime as dt
 import json
 import os
@@ -44,11 +50,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile  # noqa: E402
-from fastapi.responses import HTMLResponse, JSONResponse  # noqa: E402
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
-from swinglab import config, features, inbox, pipeline, profiles  # noqa: E402
+from swinglab import config, features, inbox, live, pipeline, profiles  # noqa: E402
 
 ALLOWED = {"lidar": {".r3d", ".zip"}, "slowmo": {".mov", ".mp4", ".m4v"}, "yardstick": {".mov", ".mp4", ".m4v"}}
 MAX_BYTES = 4 * 1024 ** 3          # 4 GB per file
@@ -133,11 +139,12 @@ class Processor:
                                       userdata=self.userdata, **kw,
                                       # uploads land complete (.part, then renamed); dropped files may still be copying
                                       settle_s=0.0 if root == self.inbox_root else inbox.SETTLE_S)
+            finished_at = time.time()
             self.results = [{"id": r.get("id"), "hitter": r.get("hitter"),
                              "stages": {k: v.get("ok") for k, v in (r.get("stages") or {}).items()},
                              "headline": (r.get("report") or {}).get("headline"),
                              "file": _rel(r.get("saved_file"), self.userdata),
-                             "error": r.get("error")} for r in done] or self.results
+                             "error": r.get("error"), "finished_at": finished_at} for r in done] or self.results
             if done:
                 n_ok = sum(1 for r in done if r.get("saved_file"))
                 self.say(f"done: {n_ok} new swing(s)" + (f", {len(done) - n_ok} failed" if n_ok < len(done) else ""))
@@ -172,6 +179,10 @@ class Processor:
                 self.run()
 
 
+class LiveStartIn(BaseModel):
+    hitter: str = Field(min_length=1, max_length=80)
+
+
 class ProfileIn(BaseModel):
     name: str | None = None
     bats: str | None = None
@@ -183,7 +194,8 @@ class ProfileIn(BaseModel):
 
 def create_app(inbox_root: str | Path | None = None, userdata: str | Path | None = None, *,
                analyze_recording=None, debounce_s: float = 15.0, gemini_client=None,
-               watch: list[str | Path] | None = None, watch_every_s: float = 15.0, demo: bool = False) -> FastAPI:
+               watch: list[str | Path] | None = None, watch_every_s: float = 15.0, demo: bool = False,
+               live_idle_s: float = 8.0, live_tail_s: float = 3.0, live_connect=None) -> FastAPI:
     userdata = Path(userdata or config.USERDATA)
     inbox_root = Path(inbox_root or (userdata / "inbox"))
     (userdata / "swings").mkdir(parents=True, exist_ok=True)
@@ -197,6 +209,15 @@ def create_app(inbox_root: str | Path | None = None, userdata: str | Path | None
             profiles.drop_dir(pr["name"], userdata).mkdir(parents=True, exist_ok=True)
     if watch_every_s:                                 # the drop folder (and --watch folders) are checked all the time
         threading.Thread(target=proc.watch_loop, args=(watch_every_s,), daemon=True).start()
+
+    def _live_saved(info: dict) -> None:
+        settled = time.time() - inbox.SETTLE_S - 1    # packed complete (.part, then renamed): no copy-settle wait
+        os.utime(info["path"], (settled, settled))
+        threading.Thread(target=proc.run, daemon=True).start()
+
+    live_session = live.LiveSession(userdata / "live_staging", idle_s=live_idle_s, tail_s=live_tail_s,
+                                    on_saved=_live_saved, log=proc.say, connect=live_connect)
+    app.state.live = live_session
 
     def _swing_list(pid: str) -> list[dict]:
         return [{**x, "url": f"userdata/swings/{pid}/{x['file']}"} for x in profiles.swing_summaries(pid, userdata)]
@@ -290,6 +311,7 @@ def create_app(inbox_root: str | Path | None = None, userdata: str | Path | None
         profile, files go to that hitter's drop folder; otherwise to a dated session in the inbox."""
         if kind not in ALLOWED and kind != "auto":
             raise HTTPException(400, f"kind must be auto or one of {sorted(ALLOWED)}")
+        received_at = time.time()          # server clock: the viewer waits for results finished after this
         prof = profiles.by_name(hitter, userdata) if hitter else None
         if prof is not None and not prof.get("synthetic"):
             sdir = profiles.drop_dir(prof["name"], userdata)
@@ -335,7 +357,7 @@ def create_app(inbox_root: str | Path | None = None, userdata: str | Path | None
         if process:
             proc.schedule()
         return {"saved": saved, "session": sdir.name, "hitter": prof["name"] if prof else None,
-                "processing_in_s": proc.debounce_s if process else None}
+                "processing_in_s": proc.debounce_s if process else None, "received_at": received_at}
 
     @app.post("/api/process")
     def process_now():
@@ -345,6 +367,54 @@ def create_app(inbox_root: str | Path | None = None, userdata: str | Path | None
     @app.get("/api/status")
     def status():
         return {"running": proc.running, "last_run": proc.last_run, "log": proc.log[-40:], "results": proc.results[-20:]}
+
+    def _no_phone(e: Exception) -> HTTPException:
+        msg = str(e) if isinstance(e, RuntimeError) else f"{type(e).__name__}: {e}"
+        return HTTPException(503, f"Could not reach the iPhone: {msg}")
+
+    @app.post("/api/live/connect")
+    def live_connect_phone():
+        try:
+            live_session.connect()
+        except Exception as e:
+            raise _no_phone(e)
+        return live_session.status()
+
+    @app.post("/api/live/start")
+    def live_start(body: LiveStartIn):
+        prof = profiles.by_name(body.hitter, userdata)
+        if prof is None or prof.get("synthetic"):
+            raise HTTPException(404, f"no hitter named '{body.hitter}'")
+        if live_session.state in ("recording", "saving"):
+            raise HTTPException(409, f"a session is already {live_session.state}")
+        drop = profiles.drop_dir(prof["name"], userdata)
+        drop.mkdir(parents=True, exist_ok=True)
+        try:
+            return live_session.start(prof["name"], drop)
+        except Exception as e:
+            raise _no_phone(e)
+
+    @app.post("/api/live/stop")
+    def live_stop():
+        return live_session.stop()
+
+    @app.get("/api/live/status")
+    def live_status():
+        return live_session.status()
+
+    @app.get("/api/live/preview")
+    async def live_preview():
+        """MJPEG: the newest preview frame, for an <img> in the Record swing popup."""
+        async def frames():
+            last = None
+            while True:
+                jpg = live_session.preview_jpeg()
+                if jpg is not None and jpg is not last:
+                    last = jpg
+                    yield b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %d\r\n\r\n%s\r\n" % (len(jpg), jpg)
+                await asyncio.sleep(0.05)
+        return StreamingResponse(frames(), media_type="multipart/x-mixed-replace; boundary=frame",
+                                 headers={"Cache-Control": "no-store"})
 
     @app.post("/api/chat")
     def chat(body: ChatIn):
@@ -395,10 +465,15 @@ def main():
     ap.add_argument("--demo", action="store_true",
                     help="fast demo: check the drop folders every 2 s; show the scores as soon as the pose is measured, "
                          "then add the ball check, AI report and video to the same swing")
+    ap.add_argument("--live-idle", type=float, default=8.0,
+                    help="Record swing: end the session after the hitter has been still this many seconds")
+    ap.add_argument("--live-tail", type=float, default=3.0,
+                    help="Record swing: keep recording this many seconds after Stop (the phone's video arrives late)")
     a = ap.parse_args()
     import uvicorn
     app = create_app(a.inbox, a.userdata, debounce_s=1.0 if a.demo else a.debounce, watch=a.watch,
-                     watch_every_s=2.0 if a.demo else 15.0, demo=a.demo)
+                     watch_every_s=2.0 if a.demo else 15.0, demo=a.demo, live_idle_s=a.live_idle,
+                     live_tail_s=a.live_tail)
     app.state.port = a.port
     ud = Path(a.userdata or config.USERDATA)
     print(f"viewer:   http://localhost:{a.port}/\nphones:   http://{lan_ip()}:{a.port}/upload   (same Wi-Fi)\n"

@@ -924,6 +924,14 @@ Contract changes between the tracks: `docs/CONTRACT_CHANGES.md`.
 
 ### 14 FUNC log
 (FUNC session: newest first.)
+- 2026-10-11 late morning: **Record swing in the viewer** (replaces `scripts\live_capture.py` and the QR code in
+  the upload dialog). The server owns the iPhone's USB stream (`live.LiveSession`); the popup shows it live
+  (`/api/live/preview`, MJPEG). One recording per **session**, not per swing: it ends by itself once the hitter
+  has been still for `--live-idle` s (default 8; armed only after the first movement), at 90 s, or on Stop & save,
+  and is written as one Record3D `.r3d` (`live.R3dWriter`) into the hitter's drop folder, analyzed right away.
+  Checked without a phone (fake stream through the real server and viewer: auto-stop, .r3d loads, analysis runs).
+  Untested on a real phone: the USB stream's orientation and the motion threshold (0.5% of pixels changed in
+  0.1 s; the popup's meter shows it).
 - 2026-10-11 morning: **Fast demo.** `python api\server.py --demo`: drop folders checked every 2 s (a dropped file
   must be unchanged 3 s, so half-copied recordings aren't read); **phase 1** saves the scores as soon as the pose
   is measured (measured: **28 s** after a 2.9 s recording landed); **phase 2** adds the ball check, the AI report and

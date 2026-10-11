@@ -288,10 +288,22 @@ svg text{font-family:var(--body);font-size:10px;fill:var(--muted)}
 .flist small{color:var(--muted)}
 .upbar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:10px}
 .upbar i{display:block;height:100%;width:0;background:var(--navy);transition:width .2s}
-.phone{display:flex;gap:14px;align-items:center;margin-top:14px;border-top:1px solid var(--line);padding-top:14px;font-size:13px;color:var(--muted)}
-.phone #qr{flex:0 0 auto;background:#fff;padding:4px;border:1px solid var(--line);border-radius:6px}
-.phone a{color:var(--navy);word-break:break-all}
-.phone div:last-child{min-width:0;overflow-wrap:anywhere}
+.recrow{display:flex;gap:14px;align-items:center;margin-top:14px;border-top:1px solid var(--line);padding-top:14px;font-size:13px;color:var(--muted)}
+.recrow .btn{flex:0 0 auto;font-weight:600;color:var(--red);border-color:var(--red)}
+.recrow div{min-width:0;overflow-wrap:anywhere}
+/* record swing popup */
+#recDlg{max-width:560px}
+.recview{position:relative;background:#0b1626;border-radius:10px;overflow:hidden;display:grid;place-items:center;height:min(62vh,520px);margin-top:10px}
+.recview img{max-width:100%;max-height:100%;display:block}
+.recview img:not([src]),.recview img[src=""]{display:none}
+.recbadge{position:absolute;top:10px;left:10px;background:var(--red);color:#fff;font:600 13px var(--mono);padding:4px 8px;border-radius:6px}
+.recbadge::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:#fff;margin-right:6px;animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+.recinfo{font-size:14px;margin-top:10px;min-height:1.3em}
+.recinfo.err{color:var(--red)}
+.recmeter{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:8px}
+.recmeter i{display:block;height:100%;width:0;background:var(--navy);transition:width .15s}
+.recmeter.on i{background:var(--red)}
 .upmsg{font-size:14px;margin:10px 0 0;color:var(--ink)}
 .upmsg:empty{display:none}
 .upmsg.ok,.upmsg.err,.upmsg.info{border-left:3px solid var(--navy);background:var(--navy-50);border-radius:6px;padding:8px 10px}
@@ -511,8 +523,18 @@ dialog h2{font:700 24px var(--display);letter-spacing:.04em}
     <div class="upbar" id="upBar" hidden><i></i></div>
     <div class="upstate" id="upState" hidden><span class="spin" aria-hidden="true"></span><span id="upStateText"></span></div>
     <div class="upmsg" id="upMsg" role="status"></div>
-    <div class="phone" id="upPhone" hidden><div id="qr"></div><div>Or upload <b>from a phone</b> on the same Wi-Fi: scan the code or open<br><a id="upPhoneUrl" target="_blank"></a><br><span id="upDropHint"></span></div></div>
+    <div class="recrow" id="upRecRow" hidden><button type="button" class="btn" id="upRec" aria-label="Record a swing session from the iPhone">● Record swing</button><div>Stream from the iPhone (USB, Record3D) and record a whole session. It saves when you stop swinging.<br><span id="upDropHint"></span></div></div>
     <div class="dlgbtns"><button class="btn" value="cancel" formnovalidate>Close</button><button class="btn primary" id="upGo" value="go">Upload</button></div>
+  </form>
+</dialog>
+
+<dialog id="recDlg" aria-labelledby="recTitle">
+  <form method="dialog">
+    <h2 id="recTitle">Record swing</h2>
+    <div class="recview"><img id="recImg" alt="Live view from the iPhone"><span class="recbadge" id="recBadge" hidden>REC 0:00</span></div>
+    <div class="recinfo" id="recInfo" role="status" aria-live="polite"></div>
+    <div class="recmeter" id="recMeter" title="Movement the auto-stop sees"><i></i></div>
+    <div class="dlgbtns"><button class="btn" value="cancel" id="recClose">Close</button><button type="button" class="btn primary" id="recGo" disabled>Start recording</button></div>
   </form>
 </dialog>
 
@@ -547,8 +569,6 @@ dialog h2{font:700 24px var(--display);letter-spacing:.04em}
   </form>
 </dialog>
 <div class="toast" id="toast" role="status"></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 (async function(){
@@ -1118,8 +1138,8 @@ async function deleteProfile(p){
   const r=await fetch(`api/profiles/${p.id}`,{method:"DELETE"});if(!r.ok){toast("Could not delete");return}
   await loadProfiles();PID=null;go("#home");toast(`Deleted ${p.name}`)}
 
-/* ---------- upload: drag and drop here, or from a phone (QR code) ---------- */
-const upDlg=$("#upDlg");let upFiles=[], INFO=null;
+/* ---------- upload: drag and drop here, or record from the iPhone (Record swing) ---------- */
+const upDlg=$("#upDlg");let upFiles=[];
 const KIND=n=>/\.(r3d|zip)$/i.test(n)?"LiDAR recording":/yardstick/i.test(n)?"yardstick (scale) clip":/\.(mov|mp4|m4v)$/i.test(n)?"slow-motion clip":"not a recording";
 function fmtMB(b){return b>1e6?`${(b/1e6).toFixed(1)} MB`:`${Math.round(b/1e3)} KB`}
 function renderUpList(){$("#upList").innerHTML=upFiles.map(f=>`<li><span>${esc(f.name)}</span><small>${esc(KIND(f.name))} · ${fmtMB(f.size)}</small></li>`).join("");$("#upGo").disabled=!upFiles.length}
@@ -1137,11 +1157,9 @@ async function openUpload(){
   $("#upHitter").innerHTML=real.map(p=>`<option value="${esc(p.name)}" ${p.id===PID?"selected":""}>${esc(p.name)}</option>`).join("");
   if(!JOB&&!upKeep){upFiles=[];renderUpList();upMsg("","");$("#upBar").hidden=true;$("#upSteps").hidden=true;$("#upState").hidden=true}
   upKeep=false;                                                  // a failure stays visible until the dialog is opened once
-  try{INFO=INFO||await fetch("api/info").then(r=>r.json())}catch(e){}
   const hint=()=>{const p=real.find(x=>x.name===$("#upHitter").value);$("#upDropHint").textContent=p&&p.drop_folder?`On this laptop you can also copy files into ${p.drop_folder}`:""};
   $("#upHitter").onchange=hint;hint();
-  if(INFO){$("#upPhone").hidden=false;$("#upPhoneUrl").textContent=INFO.phone_upload_url;$("#upPhoneUrl").href=INFO.phone_upload_url;
-    $("#qr").innerHTML="";if(window.QRCode)new QRCode($("#qr"),{text:INFO.phone_upload_url,width:96,height:96,colorDark:"#0C2340",colorLight:"#ffffff"})}
+  $("#upRecRow").hidden=false;
   upDlg.showModal()}
 $("#uploadBtn").onclick=openUpload;
 const drop=$("#upDrop");
@@ -1150,8 +1168,9 @@ $("#upFiles").onchange=e=>{upFiles=[...e.target.files];renderUpList()};
 ["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over")}));
 ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over")}));
 drop.addEventListener("drop",e=>{upFiles=[...e.dataTransfer.files];renderUpList()});
-/* One upload at a time is followed through the server's processing log (GET /api/status):
-   upload → queued (debounce) → analyzing → ready (the swing opens) or failed (the reason, in plain words). */
+/* One upload at a time is followed through GET /api/status until a result for its files arrives:
+   upload → queued (debounce) → analyzing → ready (the swing opens) or failed (the reason, in plain words).
+   In demo mode the drop folders are processed every 2 s, so a finished run is not by itself this upload's. */
 let JOB=null,upKeep=false;
 function upMsg(cls,html){$("#upMsg").className="upmsg"+(cls?" "+cls:"");$("#upMsg").innerHTML=html}
 function upStep(s,fail){const order=["up","wait","run","done"],k=order.indexOf(s);$("#upSteps").hidden=false;
@@ -1167,11 +1186,10 @@ function plainReason(raw){
   return "The analysis stopped with an error."}
 $("#upGo").onclick=async e=>{e.preventDefault();if(!upFiles.length||JOB)return;
   const bad=upFiles.filter(f=>KIND(f.name)==="not a recording");if(bad.length){upMsg("err",`${esc(bad[0].name)} is not a recording or a video.`);return}
-  let before=null;try{before=(await getStatus()).last_run}catch(err){}
   const hitter=$("#upHitter").value,stems=upFiles.map(f=>f.name.replace(/\.[^.]+$/,"")),total=upFiles.reduce((a,f)=>a+f.size,0);
   const fd=new FormData();upFiles.forEach(f=>fd.append("files",f));fd.append("hitter",hitter);fd.append("kind","auto");
   const x=new XMLHttpRequest();x.open("POST","api/upload");
-  JOB={hitter,stems,before};upMsg("","");upStep("up");$("#upBar").hidden=false;$("#upBar i").style.width="0";$("#upGo").disabled=true;
+  JOB={hitter,stems};upMsg("","");upStep("up");$("#upBar").hidden=false;$("#upBar i").style.width="0";$("#upGo").disabled=true;
   upBusy(`Uploading ${fmtMB(total)}…`,"Keep this window open until the upload finishes.");
   x.upload.onprogress=ev=>{if(!ev.lengthComputable)return;const p=100*ev.loaded/ev.total;$("#upBar i").style.width=p+"%";
     upBusy(p<100?`Uploading… ${Math.round(p)}%`:"Saving on the laptop…",`${fmtMB(ev.loaded)} of ${fmtMB(ev.total)}`)};
@@ -1179,7 +1197,8 @@ $("#upGo").onclick=async e=>{e.preventDefault();if(!upFiles.length||JOB)return;
   x.onload=()=>{let d={};try{d=JSON.parse(x.responseText)}catch(err){}
     if(x.status!==200){failUpload(esc(d.error||d.detail||`Upload failed (${x.status}).`));return}
     upFiles=[];renderUpList();$("#upBar").hidden=true;$("#live").checked=true;
-    JOB.start=Date.now();JOB.wait=d.processing_in_s;upStep("wait");followJob()};
+    if((d.saved||[]).length)JOB.stems=d.saved.map(f=>f.name.replace(/\.[^.]+$/,""));   // the names the server saved them under
+    JOB.start=Date.now();JOB.wait=d.processing_in_s;JOB.receivedAt=d.received_at;upStep("wait");followJob()};
   x.onerror=()=>failUpload("Upload failed: is the SwingLab server still running?");
   x.send(fd)};
 async function followJob(){
@@ -1187,24 +1206,94 @@ async function followJob(){
   let s;try{s=await getStatus()}catch(err){                   // older server without /api/status: the old message
     JOB=null;upBusy("");upMsg("ok",`Uploaded for ${esc(j.hitter)}. The swing opens here when the analysis is done (about a minute).`);$("#upGo").disabled=false;return}
   const secs=Math.round((Date.now()-j.start)/1000);
-  if(s.running){j.seen=true;upStep("run");upBusy(`Analyzing ${esc(j.hitter)}'s swing…`,`Finding the body, measuring the swing, writing the coach report · ${secs} s (usually about a minute)`)}
-  else if(!j.seen&&s.last_run===j.before){const left=j.wait!=null?Math.max(0,Math.ceil(j.wait-secs)):null;
+  const mine=(s.results||[]).filter(r=>isJobResult(j,r));
+  if(mine.length){finishJob(j,mine);return}
+  if(secs>JOB_TIMEOUT_S){JOB=null;upBusy("");$("#upGo").disabled=false;upStep("run");
+    upMsg("",`Still analyzing ${esc(j.hitter)}'s swing. It opens here when it's ready.`);return}
+  if(s.running){upStep("run");upBusy(`Analyzing ${esc(j.hitter)}'s swing…`,`Finding the body, measuring the swing, writing the coach report · ${secs} s (usually about a minute)`)}
+  else{const left=j.wait!=null?Math.max(0,Math.ceil(j.wait-secs)):null;
     upStep("wait");upBusy("Queued",left?`Analysis starts in ${left} s`:"Starting…")}
-  else{finishJob(j,s);return}
   setTimeout(followJob,1500)}
-async function finishJob(j,s){
+// A result belongs to this upload when it is for one of its files and hitter and finished after the files arrived
+// (both times are the server's clock). Older servers send no times: then the file name and hitter decide.
+const JOB_TIMEOUT_S=180;
+function isJobResult(j,r){
+  if(j.receivedAt!=null&&!(r.finished_at>=j.receivedAt))return false;
+  if(j.hitter&&String(r.hitter||"").toLowerCase()!==j.hitter.toLowerCase())return false;
+  return j.stems.some(st=>String(r.id||"").includes(st))}
+async function finishJob(j,mine){
   JOB=null;upBusy("");$("#upGo").disabled=false;
-  const mine=(s.results||[]).filter(r=>j.stems.some(st=>String(r.id||"").includes(st)));
   const ok=mine.filter(r=>Object.values(r.stages||{}).some(Boolean));
   if(ok.length){upStep("done");upMsg("ok",`Swing ready for ${esc(j.hitter)}. Opening it…`);
     try{const d=await fetch("api/latest").then(r=>r.json());lastSeen=d.modified||lastSeen;await loadProfiles();
       if(upDlg.open)upDlg.close();PID=null;go(`#hitter/${d.profile}`);await selectProfile(d.profile,d.file);setView("swing")}catch(err){}
     toast(`New swing analyzed for ${j.hitter}`);return}
-  const line=(s.log||[]).slice().reverse().find(l=>/!!|ERROR/.test(l)&&(j.stems.some(st=>l.includes(st))||/ERROR/.test(l)))||"";
-  const raw=line.replace(/^\S+\s+/,"").replace(/^!!\s*/,"").trim();
+  const raw=String((mine.find(r=>r.error)||{}).error||"").trim();
   upStep("run",true);
-  upMsg("err",`<b>${mine.length||raw?"This swing couldn't be analyzed.":"The analysis finished, but no swing came out of this upload."}</b><br>${plainReason(raw)}${raw?`<details><summary>Details</summary><code>${esc(raw)}</code></details>`:""}`);
+  upMsg("err",`<b>This swing couldn't be analyzed.</b><br>${plainReason(raw)}${raw?`<details><summary>Details</summary><code>${esc(raw)}</code></details>`:""}`);
   if(!upDlg.open){upKeep=true;toast(`Couldn't analyze the swing for ${j.hitter}: open Upload swing for details`)}}
+
+/* ---------- record swing: the iPhone streams to the server; a whole session becomes one .r3d in the drop folder.
+   The server ends the session by itself once the hitter has been still for a few seconds; then the upload
+   dialog's steps follow the analysis like an upload. Closing the popup mid-session stops and saves it. ---------- */
+const recDlg=$("#recDlg");let REC_HITTER=null, recTimer=null, recState=null, recWaitingSave=false;
+const fmtClock=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,"0")}`;
+const postJSON=(url,body)=>fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body||{})})
+  .then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||d.detail||`Request failed (${r.status})`);return d});
+const recInfo=(text,isErr)=>{$("#recInfo").textContent=text;$("#recInfo").className="recinfo"+(isErr?" err":"")};
+const openRecord=async()=>{
+  REC_HITTER=$("#upHitter").value;if(!REC_HITTER)return;
+  if(upDlg.open)upDlg.close();
+  $("#recTitle").textContent=`Record swing: ${REC_HITTER}`;
+  $("#recGo").disabled=true;$("#recGo").textContent="Start recording";$("#recBadge").hidden=true;
+  recInfo("Connecting to the iPhone…");if(!recDlg.open)recDlg.showModal();
+  try{renderRec(await postJSON("api/live/connect"))}
+  catch(err){recState="offline";$("#recGo").disabled=false;$("#recGo").textContent="Try again";
+    recInfo(`${err.message}. Then press Try again.`,true);return}
+  $("#recImg").src="api/live/preview?t="+Date.now();
+  clearInterval(recTimer);recTimer=setInterval(pollRec,500)};
+const pollRec=async()=>{try{renderRec(await fetch("api/live/status").then(r=>r.json()))}catch(e){recInfo("Lost the SwingLab server.",true)}};
+function renderRec(s){
+  recState=s.state;
+  const isRec=s.state==="recording", go=$("#recGo"), thr=s.motion_threshold||0.005, motion=s.motion||0;
+  if(isRec||s.state==="saving")recWaitingSave=true;
+  $("#recBadge").hidden=!isRec;if(isRec)$("#recBadge").textContent=`REC ${fmtClock(s.elapsed_s||0)}`;
+  $("#recMeter i").style.width=Math.min(100,25*motion/thr)+"%";$("#recMeter").classList.toggle("on",motion>=thr);
+  if(isRec&&s.finishing){go.disabled=true;go.textContent="Saving…";
+    recInfo(`Catching the last frames… ${Math.ceil(s.tail_left_s||0)} s (the iPhone's video arrives a little late)`);return}
+  if(isRec){go.disabled=false;go.textContent="Stop & save";
+    if(!s.connected)recInfo("No video from the iPhone…",true);
+    else if(!s.has_moved)recInfo(`Recording. Swing when you're ready; it saves ${Math.round(s.idle_s)} s after you stop.`);
+    else if(s.idle_left_s!=null&&s.idle_left_s<s.idle_s-1)recInfo(`Still. Saving in ${Math.ceil(s.idle_left_s)} s`);
+    else recInfo(`Swinging… ${s.frames||0} frames${s.dropped?` (${s.dropped} dropped)`:""}`);
+    return}
+  if(s.state==="saving"){go.disabled=true;go.textContent="Saving…";recInfo(`Session ended (${s.reason}). Saving the recording…`);return}
+  if(s.state==="saved"&&s.saved&&recWaitingSave){recWaitingSave=false;handleRecSaved(s.saved);return}
+  go.disabled=!s.connected;go.textContent="Start recording";
+  if(s.state==="error"&&recWaitingSave){recWaitingSave=false;recInfo(`The session couldn't be saved: ${s.error}`,true);return}
+  if($("#recInfo").classList.contains("err")&&s.connected)return;      // keep the last error until the next start
+  recInfo(s.connected?"Ready. Press Start recording when you're in the box.":"Waiting for video from the iPhone…")}
+const handleRecToggle=async()=>{
+  if(recState==="offline"){openRecord();return}
+  const go=$("#recGo");go.disabled=true;
+  try{
+    if(recState==="recording"){renderRec(await postJSON("api/live/stop"));return}
+    recInfo("Starting…");renderRec(await postJSON("api/live/start",{hitter:REC_HITTER}))}
+  catch(err){recInfo(err.message,true);go.disabled=false}};
+const stopRecPolling=()=>{clearInterval(recTimer);recTimer=null;$("#recImg").removeAttribute("src")};
+function handleRecSaved(saved){
+  stopRecPolling();if(recDlg.open)recDlg.close();
+  toast(`Session saved for ${saved.hitter} (${saved.seconds} s). Analyzing…`);
+  if(JOB)return;                                                   // an upload is being followed already
+  const stem=String(saved.path).split(/[\\/]/).pop().replace(/\.r3d$/i,"");
+  JOB={hitter:saved.hitter,stems:[stem],start:Date.now(),wait:0,receivedAt:saved.saved_at};
+  $("#live").checked=true;$("#upGo").disabled=true;$("#upBar").hidden=true;upMsg("","");upStep("wait");
+  openUpload().then(followJob)}
+recDlg.addEventListener("close",()=>{
+  $("#recImg").removeAttribute("src");
+  if(recState==="recording"){postJSON("api/live/stop").catch(()=>{});return}   // keep polling: the save is followed
+  if(recState!=="saving")stopRecPolling()});
+$("#upRec").onclick=openRecord;$("#recGo").onclick=handleRecToggle;
 
 /* ---------- live: show new swings as soon as they are analyzed ---------- */
 function toast(msg){const el=$("#toast");el.textContent=msg;el.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove("show"),3500)}
