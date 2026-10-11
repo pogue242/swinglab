@@ -441,12 +441,22 @@ def contact_for(rec: dict) -> dict | None:
     return c
 
 
+PENDING_NOTE = "ball check, coach report and video still running"
+
+
 def _finish(rec: dict, hitter: dict, slow: dict | None, slow_video, use_gemini: bool, *,
-            template_reason: str = "disabled") -> None:
+            template_reason: str = "disabled", quick: bool = False) -> None:
     """Last stage of every analyzed swing: attach the slow-motion result, decide hit vs dry swing,
-    score ball contact (hits only), then the coach report."""
+    score ball contact (hits only), then the coach report. ``quick`` (demo mode, phase 1): only a template
+    report, the rest is marked pending and done by complete_swing()."""
     measured = attach_slowmo(rec, slow, slow_video)
     if "analysis" not in rec:
+        return
+    if quick:
+        rec["pending"] = ["ball check", "coach report", "video"]
+        rec["mode"], rec["mode_evidence"] = "dry", f"provisional: {PENDING_NOTE}"
+        rec["analysis"]["mode"] = "dry"
+        _coach(rec, hitter, measured, False, template_reason="quick demo mode: the AI coach report follows")
         return
     decide_mode(rec)
     contact = contact_for(rec)
@@ -455,6 +465,22 @@ def _finish(rec: dict, hitter: dict, slow: dict | None, slow_video, use_gemini: 
         rec.setdefault("warnings", []).append("ball hit detected, but no exit speed was measured, so no contact score "
                                               "(needs the slow-motion camera)")
     _coach(rec, hitter, measured, use_gemini, template_reason=template_reason)
+
+
+def complete_swing(rec: dict, hitter: dict, *, use_gemini: bool = True) -> dict:
+    """Demo mode, phase 2 for a record saved by a quick analysis: the ball check (hit / miss / dry), the contact
+    score and the AI coach report. The caller saves it again with the annotated video (save_result)."""
+    if "analysis" not in rec:
+        return rec
+    rec.pop("pending", None)
+    decide_mode(rec)
+    contact = contact_for(rec)
+    scoring.with_contact(rec["analysis"], contact)
+    if rec["mode"] == "hit" and contact is None:
+        rec.setdefault("warnings", []).append("ball hit detected, but no exit speed was measured, so no contact score "
+                                              "(needs the slow-motion camera)")
+    _coach(rec, hitter, rec.get("measured"), use_gemini)
+    return rec
 
 
 def slowmo_contact_time(slow: dict | None, video: str | Path) -> float | None:
@@ -513,7 +539,7 @@ def analyze_recording(lidar: str | Path | None, slowmo: str | Path | None, hitte
                       use_gemini: bool = True, slowmo_fps: float = 240.0, m_per_px: float | None = None,
                       yardstick: str | Path | None = None, tape=None, slowmo_clips: list | None = None,
                       stick_length_m: float = 0.9144, gemini_max_swings: int | None = GEMINI_MAX_SWINGS,
-                      lifted=None, **kw) -> dict:
+                      lifted=None, quick: bool = False, **kw) -> dict:
     """Entry point for any recording: lift it ONCE, find every swing in it and analyze each one the
     same way, whatever the recording's length (no clip-vs-session distinction).
     Returns {"recs": [one record per swing], "summary": trends when there are 2+ swings, else None,
@@ -521,7 +547,8 @@ def analyze_recording(lidar: str | Path | None, slowmo: str | Path | None, hitte
     ball left the tee if both clocks are known, else by order. Each swing is a hit, a miss or a dry
     swing, decided by looking for a ball (decide_mode). Gemini writes every swing's report and the
     recording summary (outcome counts and stats are computed first and handed to it);
-    ``gemini_max_swings`` caps the per-swing calls (free-tier quota)."""
+    ``gemini_max_swings`` caps the per-swing calls (free-tier quota). ``quick`` (demo mode, LiDAR only): scores
+    right away, the ball check / AI report / video later by complete_swing()."""
     from . import session
     from .coach import cues, gemini
     clips = list(slowmo_clips or ([slowmo] if slowmo else []))
@@ -572,14 +599,15 @@ def analyze_recording(lidar: str | Path | None, slowmo: str | Path | None, hitte
     for k, r in enumerate(good):
         slow, video = assigned.get(id(r), (None, None))
         _finish(r, hitter, slow, video, use_gemini and (gemini_max_swings is None or k < gemini_max_swings),
-                template_reason="disabled" if not use_gemini else f"GEMINI_MAX_SWINGS={gemini_max_swings}")
+                template_reason="disabled" if not use_gemini else f"GEMINI_MAX_SWINGS={gemini_max_swings}",
+                quick=quick and not clips)
     summary = None
     if len(good) >= 2:
         summary = session.summarize(good, source=str(lidar), quality={k: v for k, v in q.items() if not k.startswith("_")})
         if matching:
             summary["slowmo_matching"] = matching
             summary["notes"] = list(matching["notes"])
-        srep, sinfo = (gemini.session_report(summary) if use_gemini
+        srep, sinfo = (gemini.session_report(summary) if use_gemini and not quick
                        else (cues.session_report(summary), {"source": "template"}))
         summary.update(hitter=hitter.get("name", ""), report=srep.model_dump(), report_source=sinfo,
                        warnings=hitter_warnings(hitter), recording=Path(lidar).name)

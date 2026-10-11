@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import re
 import socket
 import sys
@@ -86,9 +87,15 @@ class Processor:
     """Runs inbox.process in one background thread at a time, debounced after uploads."""
 
     def __init__(self, inbox_root: Path, userdata: Path, analyze_recording=None, debounce_s: float = 15.0,
-                 watch: list[Path] | None = None):
+                 watch: list[Path] | None = None, demo: bool = False):
         self.inbox_root, self.userdata, self.watch = inbox_root, userdata, list(watch or [])
         self.analyze_recording, self.debounce_s = analyze_recording, debounce_s
+        # demo mode: phase 1 saves the scores as soon as the pose is measured (no ball check, template text, no
+        # video); phase 2 (complete()) adds the ball check, the AI report and the annotated video to the same swing
+        self.demo = demo
+        if demo and analyze_recording is None:
+            from functools import partial
+            self.analyze_recording = partial(pipeline.analyze_recording, quick=True)
         self.lock = threading.Lock()
         self.running = False
         self.log: list[str] = []
@@ -120,8 +127,12 @@ class Processor:
             for root in [self.inbox_root, self.userdata / "drop", *self.watch]:
                 if not root.exists():
                     continue
+                kw = dict(save=lambda r, folder: pipeline.save_result(r, folder, out_root=self.userdata,
+                                                                      render_video=False)) if self.demo else {}
                 done += inbox.process(root, analyze_recording=self.analyze_recording, log=self.say,
-                                      userdata=self.userdata)
+                                      userdata=self.userdata, **kw,
+                                      # uploads land complete (.part, then renamed); dropped files may still be copying
+                                      settle_s=0.0 if root == self.inbox_root else inbox.SETTLE_S)
             self.results = [{"id": r.get("id"), "hitter": r.get("hitter"),
                              "stages": {k: v.get("ok") for k, v in (r.get("stages") or {}).items()},
                              "headline": (r.get("report") or {}).get("headline"),
@@ -130,6 +141,9 @@ class Processor:
             if done:
                 n_ok = sum(1 for r in done if r.get("saved_file"))
                 self.say(f"done: {n_ok} new swing(s)" + (f", {len(done) - n_ok} failed" if n_ok < len(done) else ""))
+            for r in done:
+                if r.get("pending") and r.get("saved_file"):
+                    self.complete(r)
         except Exception as e:   # keep the server up; show the error on the page
             self.say(f"ERROR {type(e).__name__}: {e}")
         finally:
@@ -137,6 +151,18 @@ class Processor:
             self.last_run = time.strftime("%Y-%m-%d %H:%M:%S")
             self.lock.release()
 
+
+    def complete(self, rec: dict):
+        """Demo mode phase 2: ball check, AI coach report, annotated video, saved over the phase-1 record."""
+        t0 = time.time()
+        try:
+            prof = profiles.get(rec.get("profile"), self.userdata) or {}
+            hitter = profiles.hitter(prof) if prof else {"bats": rec.get("bats", "R"), "height_m": rec.get("height_m", 1.78)}
+            pipeline.complete_swing(rec, hitter)
+            pipeline.save_result(rec, Path(rec["saved_file"]).parent.name, out_root=self.userdata, render_video=True)
+            self.say(f"      -> {rec['id']}: {rec.get('mode')} swing, report and video ready ({time.time() - t0:.0f} s)")
+        except Exception as e:
+            self.say(f"      !! {rec.get('id')}: finishing failed: {type(e).__name__}: {e}")
 
     def watch_loop(self, every_s: float = 15.0):
         """Poll the watched folders (e.g. the synced Google Drive folder) for new recordings."""
@@ -157,13 +183,13 @@ class ProfileIn(BaseModel):
 
 def create_app(inbox_root: str | Path | None = None, userdata: str | Path | None = None, *,
                analyze_recording=None, debounce_s: float = 15.0, gemini_client=None,
-               watch: list[str | Path] | None = None, watch_every_s: float = 15.0) -> FastAPI:
+               watch: list[str | Path] | None = None, watch_every_s: float = 15.0, demo: bool = False) -> FastAPI:
     userdata = Path(userdata or config.USERDATA)
     inbox_root = Path(inbox_root or (userdata / "inbox"))
     (userdata / "swings").mkdir(parents=True, exist_ok=True)
     (inbox_root / "sessions").mkdir(parents=True, exist_ok=True)
     app = FastAPI(title="SwingLab")
-    proc = Processor(inbox_root, userdata, analyze_recording, debounce_s, [Path(w) for w in (watch or [])])
+    proc = Processor(inbox_root, userdata, analyze_recording, debounce_s, [Path(w) for w in (watch or [])], demo=demo)
     app.state.processor = proc
     (userdata / "drop").mkdir(parents=True, exist_ok=True)
     for pr in profiles.list_profiles(userdata):         # every hitter has a drop folder
@@ -299,6 +325,8 @@ def create_app(inbox_root: str | Path | None = None, userdata: str | Path | None
                         raise HTTPException(413, f"{name} is larger than {MAX_BYTES // 1024 ** 3} GB")
                     out.write(chunk)
             part.replace(target)
+            settled = time.time() - inbox.SETTLE_S - 1      # complete on arrival: no copy-settle wait
+            os.utime(target, (settled, settled))
             saved.append({"name": name, "kind": k, "bytes": size,
                           "path": str(target.relative_to(userdata if prof else inbox_root)).replace("\\", "/")})
         if prof is None and hitter and profiles.by_name(hitter, userdata):
@@ -364,9 +392,13 @@ def main():
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--debounce", type=float, default=15.0, help="seconds without uploads before processing starts")
+    ap.add_argument("--demo", action="store_true",
+                    help="fast demo: check the drop folders every 2 s; show the scores as soon as the pose is measured, "
+                         "then add the ball check, AI report and video to the same swing")
     a = ap.parse_args()
     import uvicorn
-    app = create_app(a.inbox, a.userdata, debounce_s=a.debounce, watch=a.watch)
+    app = create_app(a.inbox, a.userdata, debounce_s=1.0 if a.demo else a.debounce, watch=a.watch,
+                     watch_every_s=2.0 if a.demo else 15.0, demo=a.demo)
     app.state.port = a.port
     ud = Path(a.userdata or config.USERDATA)
     print(f"viewer:   http://localhost:{a.port}/\nphones:   http://{lan_ip()}:{a.port}/upload   (same Wi-Fi)\n"

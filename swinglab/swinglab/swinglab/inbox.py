@@ -231,8 +231,23 @@ def save_state(root: Path, state: dict) -> None:
 
 
 def key(p: Pair) -> str:
+    """State key of a pair: its files, not its position in the folder (the swing number is positional: adding a
+    recording shifted every later number and re-ran them all, 2026-10-11)."""
     clips = p.slowmo or ",".join(Path(c).name for c in p.slowmo_clips) or None   # new clips -> run again
-    return f"{p.session}/{p.swing}|{p.lidar}|{clips}"
+    return f"{p.session}|{p.lidar}|{clips}" if p.lidar else f"{p.session}/{p.swing}|{p.lidar}|{clips}"
+
+
+def lookup(state: dict, p: Pair) -> tuple[str, dict | None]:
+    """(key, entry) for a pair; also finds an entry saved under the old positional key "<session>/<n>|<lidar>|<clips>"."""
+    k = key(p)
+    if k in state or not p.lidar:
+        return k, state.get(k)
+    tail = k.split("|", 1)[1]
+    old = next((kk for kk in state if kk.startswith(f"{p.session}/") and kk.split("|", 1)[1] == tail), None)
+    if old is not None:
+        state[k] = state.pop(old)                  # migrate to the new key
+        return k, state[k]
+    return k, None
 
 
 def signature(p: Pair) -> list:
@@ -246,8 +261,25 @@ def signature(p: Pair) -> list:
     return out
 
 
+SETTLE_S = 3.0      # a dropped file must be unchanged this long before it is read (half-copied recordings)
+
+
+def settling(p: Pair, settle_s: float = SETTLE_S) -> bool:
+    """True while any of the pair's files (or a recording folder's rgbd/ subfolder) changed in the last settle_s."""
+    import time as _time
+    now = _time.time()
+    for f in [p.lidar, p.slowmo, *(p.slowmo_clips or [])]:
+        if not f or not Path(f).exists():
+            continue
+        paths = [Path(f)] + ([Path(f) / "rgbd"] if Path(f).is_dir() and (Path(f) / "rgbd").exists() else [])
+        if any(now - q.stat().st_mtime < settle_s for q in paths):
+            return True
+    return False
+
+
 def process(root: str | Path, *, analyze_recording=None, save=None, save_session=None,
-            force: bool = False, log=print, userdata: str | Path | None = None) -> list[dict]:
+            force: bool = False, log=print, userdata: str | Path | None = None,
+            settle_s: float = 0.0) -> list[dict]:
     """Analyze every new pair. Every swing found in a recording is analyzed the same way (one or
     many per recording) and saved in its hitter's profile folder (profiles.py, user data); a
     recording with 2+ swings also gets a summary. The hitter's profile is created from
@@ -264,10 +296,12 @@ def process(root: str | Path, *, analyze_recording=None, save=None, save_session
     state = load_state(root)
     done = []
     for p in scan(root, [pr["name"] for pr in profiles.list_profiles(userdata) if not pr.get("synthetic")]):
-        k = key(p)
-        prev = state.get(k)
+        k, prev = lookup(state, p)
         if prev and not force and not (prev.get("failed") and prev.get("signature") != signature(p)):
             continue                      # done, or failed and unchanged since (retried when the file changes)
+        if settle_s and settling(p, settle_s):
+            log(f"[wait] {p.session}/{p.swing}: still being copied")
+            continue
         name = p.hitter or ""
         prof = profiles.by_name(name, userdata)
         if prof is None and name in csv_hitters:

@@ -87,6 +87,11 @@ def test_drop_folder_is_analyzed_and_creates_no_stray_pairs(tmp_path):
     (d / "Somebody else").mkdir()
     (d / "Somebody else" / "a.r3d").write_bytes(b"x")                             # not a hitter: ignored
     app.state.processor.run()
+    assert calls == []                                                            # just copied: wait until it settles
+    import os, time
+    for f in d.rglob("*.r3d"):
+        os.utime(f, (time.time() - 10, time.time() - 10))
+    app.state.processor.run()
     assert [(Path(l).name, v, h) for l, v, h in calls] == [("2026-10-11--10-00-00.r3d", None, "Wilson")]
     app.state.processor.run()
     assert len(calls) == 1                                                        # done once
@@ -241,3 +246,72 @@ def test_failed_recording_is_retried_when_the_file_changes(tmp_path):
     os.utime(f, (f.stat().st_atime, f.stat().st_mtime + 5))
     inbox.process(drop, analyze_recording=fail, userdata=ud, log=lambda *a: None)
     assert len(calls) == 2                                       # changed file: retried
+
+
+
+@needs_models
+def test_demo_mode_shows_scores_first_then_finishes_the_swing(tmp_path):
+    """Fast demo: phase 1 saves the scores without the ball check / AI report / video; phase 2 completes the
+    same swing file."""
+    import os, time
+    from functools import partial
+    from swinglab import pipeline
+    from test_pipeline import H, W, render_stray
+    from test_quality import rigid_swing
+    t, J = rigid_swing(hip_rate=1000)
+    phase1 = []
+    real_save = pipeline.save_result
+
+    def spy_save(rec, folder, out_root=None, *, render_video=True):
+        if rec.get("pending"):
+            phase1.append({"render": render_video, "has_scores": bool(rec["analysis"]["scores"].get("form") is not None),
+                           "mode": rec["mode"], "report": bool(rec.get("report"))})
+        return real_save(rec, folder, out_root, render_video=render_video)
+    c, app = make(tmp_path, demo=True)
+    d = tmp_path / "userdata" / "drop" / "Wilson" / "rec_0001"
+    kps = render_stray(d, t, J)
+    for f in [d, *d.rglob("*")]:
+        os.utime(f, (time.time() - 10, time.time() - 10))
+    proc = app.state.processor
+    proc.analyze_recording = partial(pipeline.analyze_recording, quick=True, use_gemini=False,
+                                     keypoints_fn=lambda v: (kps, (W, H)))
+    pipeline.save_result, old = spy_save, pipeline.save_result
+    try:
+        proc.run()
+    finally:
+        pipeline.save_result = old
+    assert phase1 and phase1[0] == {"render": False, "has_scores": True, "mode": "dry", "report": True}
+    sw = c.get("/api/profiles/wilson/swings").json()["swings"]
+    rec = c.get("/" + sw[0]["url"]).json()
+    assert "pending" not in rec and rec["mode"] == "dry" and rec.get("overlay") and any("report and video ready" in line for line in proc.log)
+
+
+def test_a_new_recording_does_not_rerun_the_old_ones(tmp_path):
+    """Adding a recording renumbered the pairs (Matteo/004 -> 005...) and every later one ran again."""
+    import os, time
+    from swinglab import inbox, profiles
+    ud = tmp_path / "userdata"
+    profiles.create({"name": "Matteo", "bats": "R", "height_m": 1.75}, ud)
+    d = ud / "drop" / "Matteo"
+    d.mkdir(parents=True, exist_ok=True)
+    calls = []
+    fake = lambda l, v, h, **kw: (calls.append(Path(l).name) or {"recs": [{"id": Path(l).stem, "stages": {}, "analysis": {"scores": {}}}], "summary": None})  # noqa: E731
+    for n in ("b lidar 2.r3d", "c lidar 3.r3d"):
+        (d / n).write_bytes(b"x")
+    run = lambda: inbox.process(ud / "drop", analyze_recording=fake, userdata=ud, log=lambda *a: None,  # noqa: E731
+                                save=lambda r, folder: tmp_path / f"{r['id']}.json")
+    run()
+    assert sorted(calls) == ["b lidar 2.r3d", "c lidar 3.r3d"]
+    (d / "a lidar 1.r3d").write_bytes(b"x")              # sorts first: shifts the others' positions
+    t = time.time() + 5
+    os.utime(d / "a lidar 1.r3d", (t, t))
+    run()
+    assert sorted(calls) == ["a lidar 1.r3d", "b lidar 2.r3d", "c lidar 3.r3d"]
+
+
+def test_old_positional_state_keys_still_count_as_done(tmp_path):
+    from swinglab import inbox
+    p = inbox.Pair(session="Matteo", swing="004", lidar="X/lidar 9.r3d", slowmo=None, hitter="Matteo", method="lidar_only")
+    st = {"Matteo/004|X/lidar 9.r3d|None": {"swings": 2}}
+    k, prev = inbox.lookup(st, p)
+    assert prev == {"swings": 2} and k == "Matteo|X/lidar 9.r3d|None" and k in st
