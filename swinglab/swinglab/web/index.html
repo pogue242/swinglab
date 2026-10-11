@@ -514,7 +514,8 @@ async function loadSwings(pid){
 const parseLoose=txt=>JSON.parse(txt.replace(/([:,\[]\s*)-?(?:NaN|Infinity)(?=\s*[,\]}])/g,"$1null"));
 async function loadRecord(sw){
   if(sw._rec)return sw._rec;
-  if(!CACHE[sw.url])CACHE[sw.url]=await fetch(sw.url).then(r=>{if(!r.ok)throw new Error(r.status);return r.text()}).then(parseLoose);
+  // no-cache: re-analyzing rewrites the same file names, so always revalidate with the server
+  if(!CACHE[sw.url])CACHE[sw.url]=await fetch(sw.url,{cache:"no-cache"}).then(r=>{if(!r.ok)throw new Error(r.status);return r.text()}).then(parseLoose);
   return CACHE[sw.url];
 }
 
@@ -716,7 +717,7 @@ const ov=$("#ov");let ovMeta=null,ovOK=false,ovSeeking=false,ovURL=null;
 function setOverlay(s){
   ov.pause();ovMeta=SERVED&&s.overlay&&s.overlay.frame_times&&s.overlay.frame_times.length?s.overlay:null;ovOK=false;
   $("#vtoggle").hidden=true;stageMode("3d");if(!ovMeta){ov.removeAttribute("src");ov.load();return}
-  const want=ovMeta.path;fetch("userdata/"+want).then(r=>{if(!r.ok)throw r.status;return r.blob()}).then(b=>{   // a blob seeks on any server
+  const want=ovMeta.path;fetch("userdata/"+want,{cache:"no-cache"}).then(r=>{if(!r.ok)throw r.status;return r.blob()}).then(b=>{   // a blob seeks on any server
     if(!ovMeta||ovMeta.path!==want)return;if(ovURL)URL.revokeObjectURL(ovURL);ovURL=URL.createObjectURL(b);ov.src=ovURL;ov.playbackRate=slow?0.25:1})
    .catch(()=>{ovMeta=null})}
 ov.addEventListener("loadeddata",()=>{if(!ovMeta)return;ovOK=true;ov.playbackRate=slow?0.25:1;$("#vtoggle").hidden=false;stageMode(PREF_MODE);syncVideo()});

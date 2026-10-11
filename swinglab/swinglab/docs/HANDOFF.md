@@ -954,6 +954,10 @@ Contract changes between the tracks: `docs/CONTRACT_CHANGES.md`.
 
 ### 14 UI log
 (UI session: newest first.)
+- 2026-10-11: after re-analyzing a recording the viewer showed the **old** results: the swing JSON and MP4 keep
+  their names, and the browser reused its cached copy. Swing records and overlay videos are now fetched with
+  `cache: "no-cache"` (always revalidated). Checked on Adam's re-analysis with func/scoring (3 swings → 2, both
+  dry; new scores 30 and 16 appear after a reload).
 - 2026-10-11: **redesign, concept A** (item 10, plus item 7's chat chip and item 9 kept). `web/index.html`
   hitter page rebuilt after `potential_redesign_donotread.html`: swings rail on the left (newest first, swings
   of one recording numbered "1/3"; a horizontal row on phones); swing header with type chip and a "data notes"
