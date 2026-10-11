@@ -200,6 +200,7 @@ def analyze(row: dict, models: dict, scorers: dict, covariates: dict, ranges: di
     posture are the 2026-10-11 lab-range group grades, kept for the viewer until it shows the factors."""
     from . import elite
     full = {**row, **covariates}
+    unreliable = {**(unreliable or {}), **implausible_turns(row)}
     gs = grade_swing(row, scorers, ranges or load_ranges(), unreliable)
     res = {"predicted": {k: round(m.predict(full), 1) for k, m in models.items()}, "grading": "elite_match_v1",
            "scores": dict(gs["scores"])}       # a group with nothing gradable (partial swing) is None
@@ -229,6 +230,19 @@ def analyze(row: dict, models: dict, scorers: dict, covariates: dict, ranges: di
                         if low and res["scores"]["overall"] < STRONG_SWING else None)
     res["tree_path"] = {k: m.tree_path(row) for k, m in models.items()}
     return res
+
+
+MIN_PLAUSIBLE_TURN_DEG = 40.0   # a real swing (hands >= 5 m/s) turns the shoulders far more; lab minimum ~120°
+LOST_TURN = "the pose lost the body's turn on this swing (shoulders measured under 40° with swing-speed hands)"
+
+
+def implausible_turns(row: dict) -> dict:
+    """{feature: reason} for turn measurements that can't be real: TestSet4 toss swing 7 had 6.8 m/s hands and a
+    1.8° shoulder turn (tracking lost the body), which would score the hitter on broken numbers."""
+    t, h = row.get("torso_turn_total"), row.get("hand_speed_peak")
+    if t is not None and h is not None and np.isfinite(t) and np.isfinite(h) and t < MIN_PLAUSIBLE_TURN_DEG and h >= 5.0:
+        return dict.fromkeys(("torso_turn_total", "pelvis_turn_total"), LOST_TURN)
+    return {}
 
 
 def elite_focus(res: dict, skip: tuple = ()) -> dict | None:

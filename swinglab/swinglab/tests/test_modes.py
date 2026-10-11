@@ -101,6 +101,7 @@ def _fake_detector(ball_at: dict[int, tuple[float, float]]):
     return detect
 
 
+@pytest.mark.real_ball_check
 def test_confirm_ball_needs_detections_near_the_tracked_ball():
     frames = list(range(30))
     xy = np.full((30, 2), np.nan)
@@ -115,6 +116,7 @@ def test_confirm_ball_needs_detections_near_the_tracked_ball():
     assert not B.confirm_ball(frames, xy, detect=_fake_detector({}))["confirmed"]
 
 
+@pytest.mark.real_ball_check
 def test_tracker_hit_without_a_detected_ball_is_a_dry_swing(monkeypatch):
     """TestSet2: dry swings were labeled hit/miss from bright blobs; the detector must veto them."""
     xy = np.full((40, 2), np.nan)
@@ -129,3 +131,49 @@ def test_tracker_hit_without_a_detected_ball_is_a_dry_swing(monkeypatch):
     assert rec["mode"] == "dry" and "found no ball" in rec["mode_evidence"] and rec["ball_check"]["tracker"] == "hit"
     pipeline.decide_mode(rec, detect=_fake_detector({i: (402.0, 498.0) for i in range(0, 40)}))
     assert rec["mode"] == "hit" and rec["ball_check"]["confirmed"]
+
+
+@pytest.mark.real_ball_check
+def test_detector_reads_a_toss_hit_and_a_miss():
+    """TestSet4: the ball vanishes at the bat and reappears flying away; a miss keeps falling by the hitter."""
+    fps, n = 240.0, 200
+    person = (B.COCO_PERSON, 0.9, 200.0, 500.0, 150.0, 400.0)
+
+    def scene(hit):
+        def detect(i):
+            out = [person]
+            if i < 100:                                    # the toss coming down by the hitter
+                out.append((B.COCO_SPORTS_BALL, 0.5, 260.0, 200.0 + 3 * i, 12.0, 12.0))
+            elif hit and 108 <= i < 140:                   # hidden at the bat, then flies away from the hitter
+                out.append((B.COCO_SPORTS_BALL, 0.5, 300.0 + 18 * (i - 108), 480.0 - 8 * (i - 108), 12.0, 12.0))
+            elif not hit and i < 130:
+                out.append((B.COCO_SPORTS_BALL, 0.5, 262.0, 200.0 + 3 * i, 12.0, 12.0))
+            return out
+        return detect
+    h = B.detector_ball_outcome(range(n), fps=fps, detect=scene(True))
+    assert h["kind"] == "hit" and h["flight"]["px_per_frame"] > 15 and h["launch_angle_deg"] > 0
+    m = B.detector_ball_outcome(range(n), fps=fps, detect=scene(False))
+    assert m["kind"] == "miss" and m["flight"] is None
+    none = B.detector_ball_outcome(range(n), fps=fps, detect=lambda i: [person])
+    assert none["kind"] == "none"
+
+
+@pytest.mark.real_ball_check
+def test_detector_hit_does_not_reuse_the_trackers_path(monkeypatch, tmp_path):
+    """TestSet4 bug: the blob tracker's rest spot leaked into the launch fit after the detector decided."""
+    import cv2
+    clip = tmp_path / "c.mp4"
+    vw = cv2.VideoWriter(str(clip), cv2.VideoWriter_fourcc(*"mp4v"), 30.0, (320, 240))
+    for _ in range(40):
+        vw.write(np.zeros((240, 320, 3), np.uint8))
+    vw.release()
+    xy = np.full((40, 2), np.nan)
+    monkeypatch.setattr(B, "ball_events", lambda cands, expected_r=None, fps=None: {
+        "kind": "hit", "how": "tee", "rest": (100.0, 100.0, 5.0), "last_rest_frame": 10, "flight": {11: np.array([150.0, 90.0])},
+        "xy": xy, "reason": "the ball left the tee"})
+    monkeypatch.setattr(B, "confirm_ball", lambda *a, **k: {"confirmed": False, "frames_checked": 3})
+    monkeypatch.setattr(B, "detector_ball_outcome", lambda frames, fps, **k: {
+        "kind": "hit", "reason": "flew away", "exit_speed_mph": 25.0, "flight": {"frames": [12, 20]}, "tracks": 2})
+    out = pipeline.analyze_slowmo(clip, fps=240, track_bat=False)
+    assert out["ball_outcome"] == "hit" and out["exit_speed_mph"] is None and out["exit_speed_rough_mph"] == 25.0
+    assert out["contact_frame"] is None

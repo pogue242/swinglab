@@ -15,7 +15,8 @@ Each FACTOR is a few measurements; each measurement gets a percent of elite by i
   heel_turn  coaching rule (the lab has no foot markers): back foot turned >= 30° just after contact = 100,
              10° = 0, linear between
 A factor's percent = the mean of its measurements' percents. The headline ELITE MATCH = the WEIGHTED mean over
-the factors that could be judged. Weights (set with the team 2026-10-11): Leg drive 2.5; Shoulder turn and
+the factors that could be judged, MINUS a fixed SCORE_DEDUCTION of 15 points (floor 0), so only near-elite
+swings reach the 80s and an average lab hitter sits in the high 70s. Weights (set with the team 2026-10-11): Leg drive 2.5; Shoulder turn and
 Hip turn 2 (the upper-body twist the team ranks first); Hand speed, Front-leg block, Step-through 1.5; Contact
 point and Stretch & stay closed 0.5 (in the lab they separate elite hitters least). The AI coach does NOT score:
 it reads the video and the numbers and guides the coaching (not part of the headline).
@@ -44,6 +45,8 @@ from . import config, features
 ELITE_FILE = "elite_ref.json"
 ELITE_FRACTION = 1 / 3
 ELITE_PCT, CLOSE_PCT = 90.0, 70.0
+SCORE_DEDUCTION = 15.0  # headline = weighted average of the factor percents - 15 (team, 2026-10-11: "60s are too high");
+                        # factor percents and the "at elite" count are not affected
 ZERO_STRETCH = 2.0      # zero point = band edge +/- max(ZERO_STRETCH x distance to the lab extreme, elite IQR)
 HEEL_FULL, HEEL_ZERO = 30.0, 10.0
 FRONT_CAMERA = "reads lower than true from a camera in front of the hitter"
@@ -225,7 +228,10 @@ def match(feats: dict, *, height_m: float | None = None, mass_kg: float | None =
 def _summarize(el: dict) -> dict:
     fs = [f for f in el["factors"] if f["percent"] is not None]
     judged = [f["percent"] for f in fs]
-    el["match"] = round(float(np.average(judged, weights=[f.get("weight", 1.0) for f in fs]))) if fs else None
+    raw = float(np.average(judged, weights=[f.get("weight", 1.0) for f in fs])) if fs else None
+    el["weighted_average"] = None if raw is None else round(raw)
+    el["deduction"] = SCORE_DEDUCTION
+    el["match"] = None if raw is None else int(max(0.0, round(raw - SCORE_DEDUCTION)))
     el["at_elite"] = sum(p >= ELITE_PCT for p in judged)
     el["n_judged"] = len(judged)
     return el

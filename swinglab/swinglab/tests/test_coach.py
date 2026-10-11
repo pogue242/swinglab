@@ -325,7 +325,8 @@ def test_elite_match_headline_count_and_ai_factor():
     ref = elite.load_reference()
     med = {f: m["elite"]["p50"] for f, m in ref["measurements"].items()}
     el = elite.match({**med, "rear_foot_turn": 40.0}, height_m=1.8, mass_kg=85, ref=ref)
-    assert el["n_judged"] == len(elite.FACTORS) and el["match"] >= 95 and el["at_elite"] >= len(elite.FACTORS) - 1
+    assert el["n_judged"] == len(elite.FACTORS) and el["weighted_average"] >= 95 and el["at_elite"] >= len(elite.FACTORS) - 1
+    assert el["match"] == el["weighted_average"] - elite.SCORE_DEDUCTION      # the fixed deduction
     weak = elite.match({**med, "rear_foot_turn": 40.0, "lead_knee_extension": -20.0, "lead_knee_flex_contact": 60.0}, ref=ref)
     fc, part = elite.weakest(weak)
     assert fc["key"] == "front_leg_block" and fc["verdict"] == "work on" and weak["match"] < el["match"]
@@ -356,3 +357,18 @@ def test_blind_rating_and_video_report_with_a_fake_client():
     assert not any(isinstance(c, str) and "{" in c for c in calls[0])      # blind: no numbers sent
     rep, info = gemini.report(make_payload(), client=fake, video=video)
     assert info["source"] == "gemini" and info["video"] and calls[1][0].video_metadata.fps == gemini.VIDEO_FPS
+
+
+@needs_models
+def test_a_lost_turn_is_not_scored():
+    """TestSet4 toss 7: 6.8 m/s hands with a 1.8° shoulder turn is a tracking failure, not a bad swing."""
+    import joblib
+    from swinglab import config, elite, model, scoring
+    models, scorers = model.load(), joblib.load(config.MODELS / "scorers.joblib")
+    row = model.load_table().iloc[0]
+    med = {f: m["elite"]["p50"] for f, m in elite.load_reference()["measurements"].items()}
+    feats = {**row[model.MECHANICS].to_dict(), **med, "hand_speed_peak": 6.8, "torso_turn_total": 1.8, "pelvis_turn_total": 0.0}
+    a = scoring.analyze(feats, models, scorers, row[model.COVARIATES].to_dict())
+    turns = {f["key"]: f for f in a["elite"]["factors"] if f["key"] in ("shoulder_turn", "hip_turn")}
+    assert all(f["percent"] is None for f in turns.values())
+    assert any(p.get("skipped") == scoring.LOST_TURN for f in turns.values() for p in f["parts"])

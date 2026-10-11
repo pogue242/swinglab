@@ -34,6 +34,7 @@ def main():
     ap.add_argument("--profile")
     ap.add_argument("--reports", action="store_true", help="also rewrite each swing's coach report")
     ap.add_argument("--no-gemini", action="store_true", help="with --reports: template reports only")
+    ap.add_argument("--render", action="store_true", help="draw the annotated videos again (they show the scores)")
     a = ap.parse_args()
     for pr in profiles.list_profiles():
         if pr.get("synthetic") or (a.profile and pr["id"] != a.profile):
@@ -51,6 +52,8 @@ def main():
             rescore(rec, hitter)
             if a.reports:      # Gemini watches the clip again when a key is set (see pipeline._coach)
                 pipeline._coach(rec, hitter, rec.get("measured"), not a.no_gemini)
+            if a.render:       # the annotated video shows the scores, so it is drawn again
+                pipeline.render_overlay(rec, f.with_suffix(""), config.USERDATA)
             f.write_text(pipeline.dump_json(rec), encoding="utf-8")
             by_rec.setdefault(rec.get("recording") or rec["id"], []).append((f, rec))
             print(f"{rec['id']:34s} {before} -> {rec['analysis']['scores']['overall']}")

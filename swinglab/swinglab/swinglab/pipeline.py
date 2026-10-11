@@ -176,7 +176,8 @@ def video_frames(video: str | Path):
 
 def analyze_slowmo(video: str | Path, *, fps: float = 240.0, m_per_px: float | None = None,
                    max_frames: int = 2400, yardstick: str | Path | None = None, tape=None,
-                   track_bat: bool = True, bat_width_px: int = 960, stick_length_m: float = 0.9144) -> dict:
+                   track_bat: bool = True, bat_width_px: int = 960, stick_length_m: float = 0.9144,
+                   confirm_ball: bool = True) -> dict:
     """240 fps side video -> ball off the tee (contact frame, exit speed, launch angle) and the bat
     from its two tape bands (bat speed at the sweet spot, end-band speed, bat and attack angle).
     All in the image plane: motion toward or away from the camera is not seen.
@@ -184,6 +185,8 @@ def analyze_slowmo(video: str | Path, *, fps: float = 240.0, m_per_px: float | N
     Scale (m/px at the tee): ``m_per_px``, else the ``yardstick`` clip (scale_from_yardstick), else
     the ball's size on the tee. Contact = the ball leaving the tee; on a dry swing, the frame of
     peak bat speed. ``tape`` = ballflight.BatTape (where the tape is on the bat).
+    ``confirm_ball``: a hit or miss from the blob tracker stands only when the object detector (YOLOX "sports
+    ball", ballflight.confirm_ball) also sees a ball near the tracked one (as on the LiDAR video).
     Two passes over the file, so long clips never sit in memory."""
     import cv2
     from . import ballflight as B
@@ -209,7 +212,31 @@ def analyze_slowmo(video: str | Path, *, fps: float = 240.0, m_per_px: float | N
         if track_bat and i % step == 0:
             bg_samples.append(cv2.resize(cv2.cvtColor(fr, cv2.COLOR_BGR2GRAY), None, fx=shrink, fy=shrink))
     ev = B.ball_events(dets, expected_r=exp_r, fps=fps)          # tee hit, toss hit, miss, or no ball
-    tb = ev if ev["kind"] == "hit" else None
+    ball_check = None
+    if confirm_ball and ev["kind"] in ("hit", "miss"):
+        last = ev.get("last_rest_frame") if ev["kind"] == "hit" else None
+        last = min(len(dets), max_frames) - 1 if last is None else int(last)
+        every = max(1, (last + 1) // 40)              # ~40 detector looks before contact
+        try:
+            ball_check = {"tracker": ev["kind"], **B.confirm_ball(islice(video_frames(video), 0, last + 1),
+                                                                 ev["xy"][: last + 1], every=every, near_px=160.0)}
+        except FileNotFoundError as e:
+            ball_check = {"tracker": ev["kind"], "confirmed": False, "error": str(e)[:200]}
+        if not ball_check["confirmed"]:
+            ev = {**ev, "kind": "none", "how": None, "reason": f"the tracker reported a {ev['kind']}, but the ball "
+                  f"detector found no ball near it in {ball_check.get('frames_checked', 0)} frames: no ball"}
+    detector = None
+    if confirm_ball and ev["kind"] == "none":
+        # the tracker found nothing it trusts: decide from the detector's own ball tracks (toss hitting, TestSet4)
+        try:
+            detector = B.detector_ball_outcome(islice(video_frames(video), 0, max_frames), fps=fps)
+        except FileNotFoundError:
+            detector = None
+        if detector and detector["kind"] in ("hit", "miss"):
+            # the tracker's path was not the ball: drop it, or its rest spot / flight would be fitted as a launch
+            ev = {**ev, "kind": detector["kind"], "how": "toss", "reason": detector["reason"], "rest": None,
+                  "last_rest_frame": None, "flight": {}, "xy": np.full_like(ev["xy"], np.nan)}
+    tb = ev if ev["kind"] == "hit" and ev.get("rest") is not None else None   # a detector hit has no fitted path
     xy = ev["xy"]
     c = None
     if m_per_px is None and tb and tb["rest"][2] > 0:
@@ -221,7 +248,10 @@ def analyze_slowmo(video: str | Path, *, fps: float = 240.0, m_per_px: float | N
     out = {"frames": len(dets), "ball_found_fraction": round(float(np.isfinite(xy[:, 0]).mean()), 3) if dets else 0,
            "contact_frame": c, "m_per_px": m_per_px, "scale_source": scale_source, "yardstick": yinfo, "exit_speed_mph": None,
            "launch_angle_deg": None, "bat_speed_mph": None, "bat": None, "fps": fps,
-           "ball_outcome": ev["kind"], "ball_how": ev["how"], "ball_reason": ev["reason"],
+           "ball_outcome": ev["kind"], "ball_how": ev["how"], "ball_reason": ev["reason"], "ball_check": ball_check,
+           "ball_detector": None if detector is None else {k: v for k, v in detector.items() if k != "tracks"},
+           # rough (image plane, scale from the ball's box size): shown, not used for the contact score
+           "exit_speed_rough_mph": (detector or {}).get("exit_speed_mph"),
            # ball positions around contact, for the annotated replay (render.py)
            "track_px": {str(i): [round(float(xy[i, 0]), 1), round(float(xy[i, 1]), 1)]
                         for i in range(max(0, (c or 0) - 20), min(len(xy), (c or 0) + 80)) if np.isfinite(xy[i, 0])}}
@@ -482,7 +512,8 @@ def match_slowmo(lidar, recs: list[dict], clips: list, t_first: float, **slow_kw
 def analyze_recording(lidar: str | Path | None, slowmo: str | Path | None, hitter: dict, *,
                       use_gemini: bool = True, slowmo_fps: float = 240.0, m_per_px: float | None = None,
                       yardstick: str | Path | None = None, tape=None, slowmo_clips: list | None = None,
-                      stick_length_m: float = 0.9144, gemini_max_swings: int | None = GEMINI_MAX_SWINGS, **kw) -> dict:
+                      stick_length_m: float = 0.9144, gemini_max_swings: int | None = GEMINI_MAX_SWINGS,
+                      lifted=None, **kw) -> dict:
     """Entry point for any recording: lift it ONCE, find every swing in it and analyze each one the
     same way, whatever the recording's length (no clip-vs-session distinction).
     Returns {"recs": [one record per swing], "summary": trends when there are 2+ swings, else None,
@@ -500,7 +531,7 @@ def analyze_recording(lidar: str | Path | None, slowmo: str | Path | None, hitte
                             m_per_px=m_per_px, yardstick=yardstick, tape=tape, stick_length_m=stick_length_m)
         return {"recs": [rec], "summary": None, "n_swings": 0}
     try:
-        lifted = lift_recording(lidar, height_m=float(hitter["height_m"]), **kw)
+        lifted = lifted or lift_recording(lidar, height_m=float(hitter["height_m"]), **kw)   # ``lifted``: reuse a lift
     except Exception as e:
         return {"recs": [{"id": Path(lidar).stem, "hitter": hitter.get("name", ""),
                           "stages": {"lidar": {"ok": False, "error": f"{type(e).__name__}: {e}"}}}],
@@ -793,3 +824,85 @@ def rebuild_index(out_root: Path | None = None) -> Path:
     idx = out_root / "index.json"
     idx.write_text(json.dumps({"swings": items, "sessions": sessions}, indent=1), encoding="utf-8")
     return idx
+
+
+# ---------------------------------------------------------------- one long slow-motion video for many swings
+#
+# TestSet4: the slow-motion phone filmed one continuous video of a whole toss session (re-exported at 30 fps, so
+# the capture rate and start time were lost). Swings are found in it from MediaPipe's 3D pose (shoulders turning
+# toward the pitcher), the map video_time = offset + slowdown x lidar_time is fitted to the LiDAR swings (the
+# slowdown gives the capture rate: x8 = 240 fps), and one clip is cut per LiDAR swing.
+
+def slowmo_swing_times(world: dict, video_fps: float, bats: str = "R", *, min_turn: float = 80.0,
+                       min_gap_s: float = 10.0, window_s: tuple[float, float] = (4.0, 3.0)) -> list[float]:
+    """Swing times (video seconds) in a slow-motion video from MediaPipe world landmarks {frame: {name: xyz}}:
+    peaks of the shoulder line's opening rate with >= ``min_turn`` degrees of opening in the window around them.
+    Windows are in VIDEO seconds (a x8 slow-motion swing lasts several video seconds)."""
+    fr = np.array(sorted(world))
+    if len(fr) < 10:
+        return []
+    tv = fr / video_fps
+    sh = np.array([np.subtract(world[i]["l_shoulder"], world[i]["r_shoulder"]) for i in fr])
+    sign = 1.0 if bats.upper() == "R" else -1.0          # a righty's l->r shoulder line opens counterclockwise from above
+    yaw = sign * np.degrees(np.unwrap(np.arctan2(sh[:, 2], sh[:, 0])))
+    yaw = K.smooth(yaw, 1.0 / float(np.median(np.diff(tv))), 1.0)
+    rate = np.gradient(yaw, tv)
+    cand = []
+    for i in range(1, len(rate) - 1):
+        if rate[i] > 0 and rate[i] >= rate[i - 1] and rate[i] >= rate[i + 1]:
+            y = yaw[(tv >= tv[i] - window_s[0]) & (tv <= tv[i] + window_s[1])]
+            if float(np.max(y - np.minimum.accumulate(y))) >= min_turn:
+                cand.append((float(rate[i]), float(tv[i])))
+    chosen: list[float] = []
+    for _, t in sorted(cand, reverse=True):
+        if all(abs(t - c) >= min_gap_s for c in chosen):
+            chosen.append(t)
+    return sorted(chosen)
+
+
+def fit_time_map(t_lidar, t_video, *, slowdowns=(4.0, 10.0), tol_real_s: float = 0.25) -> dict | None:
+    """video = offset + slowdown x lidar, from the swings both cameras saw (most matches, then smallest error), refined
+    by least squares on the matched pairs. Returns {"slowdown", "offset", "pairs", "residuals_s"} or None."""
+    tl, tv = np.asarray(t_lidar, float), np.asarray(t_video, float)
+    if len(tl) < 2 or len(tv) < 2:
+        return None
+    best = None
+    for k in np.arange(slowdowns[0], slowdowns[1] + 1e-9, 0.02):
+        for i in range(len(tl)):
+            for j in range(len(tv)):
+                a = tv[j] - k * tl[i]
+                d = np.abs((a + k * tl)[:, None] - tv[None, :]).min(1)
+                ok = d <= tol_real_s * k
+                key = (-int(ok.sum()), float(d[ok].mean() / k) if ok.any() else 9e9)
+                if best is None or key < best[0]:
+                    best = (key, k, a)
+    _, k, a = best
+    pairs = [(i, int(np.argmin(np.abs(tv - (a + k * x))))) for i, x in enumerate(tl)
+             if np.min(np.abs(tv - (a + k * x))) <= tol_real_s * k]
+    if len(pairs) >= 2:
+        A = np.c_[np.ones(len(pairs)), [tl[i] for i, _ in pairs]]
+        a, k = np.linalg.lstsq(A, np.array([tv[j] for _, j in pairs]), rcond=None)[0]
+    res = [(tv[j] - (a + k * tl[i])) / k for i, j in pairs]
+    return {"slowdown": float(k), "offset": float(a), "pairs": pairs, "residuals_s": [round(float(r), 3) for r in res]}
+
+
+def cut_clip(video: str | Path, f0: int, f1: int, out: Path, fps: float = 30.0) -> Path:
+    """Frames f0..f1 of ``video`` as an MP4 (same frames, no resampling)."""
+    import cv2
+    vc = cv2.VideoCapture(str(video))
+    vc.set(cv2.CAP_PROP_POS_FRAMES, f0)
+    vw = None
+    try:
+        for _ in range(f0, f1 + 1):
+            ok, fr = vc.read()
+            if not ok:
+                break
+            if vw is None:
+                out.parent.mkdir(parents=True, exist_ok=True)
+                vw = cv2.VideoWriter(str(out), cv2.VideoWriter_fourcc(*"mp4v"), fps, (fr.shape[1], fr.shape[0]))
+            vw.write(fr)
+    finally:
+        vc.release()
+        if vw is not None:
+            vw.release()
+    return out
