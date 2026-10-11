@@ -822,3 +822,85 @@ def confirm_ball(frames, tracked_xy: np.ndarray | None = None, *, every: int = 3
     confirmed = hits >= min_frames and (tracked_xy is None or near)
     return {"confirmed": bool(confirmed), "frames_checked": checked, "frames_with_ball": hits,
             "near_track": bool(near), "best_score": round(best, 2)}
+
+
+# ---------------------------------------------------------------- hit / miss from the object detector (toss hitting)
+#
+# TestSet4 (240 fps, self-tossed balls, phone held to the side): the blob tracker followed white clutter, while
+# YOLOX found the real ball in many frames. The ball vanishes at the bat and reappears farther away, so a hit is
+# not one continuous path. From the detector's own tracks instead:
+#   hit   a FAST track (>= MIN_FLIGHT_PX_PER_FRAME) moving away from the hitter, starting near contact
+#   miss  no such flight, but a ball (the toss) near the hitter around contact
+#   none  no ball seen around contact
+# Exit speed: the flight's image-plane speed x the scale from the ball's own box size (0.0737 m) - rough, and low
+# when the ball flies toward or away from the camera.
+
+MIN_FLIGHT_PX_PER_FRAME = 8.0
+
+
+def link_detections(pts: list[tuple[int, float, float, float]], *, max_gap: int = 4, max_step: float = 70.0,
+                    min_len: int = 4) -> list[list[tuple]]:
+    """[(frame, x, y, size)] -> tracks (lists of the same tuples), nearest continuation within max_step px/frame."""
+    trs: list[list[tuple]] = []
+    for p in sorted(pts):
+        i, x, y = p[0], p[1], p[2]
+        best, bd = None, None
+        for t in trs:
+            j, xj, yj = t[-1][0], t[-1][1], t[-1][2]
+            d = float(np.hypot(x - xj, y - yj))
+            if 0 < i - j <= max_gap and d <= max_step * (i - j) and (bd is None or d < bd):
+                best, bd = t, d
+        if best is not None:
+            best.append(p)
+        else:
+            trs.append([p])
+    return [t for t in trs if len(t) >= min_len]
+
+
+def detector_ball_outcome(frames, *, fps: float, contact_frame: int | None = None, detect=None,
+                          before_s: float = 0.25, after_s: float = 0.35) -> dict:
+    """Hit / miss / none for a toss (or tee) swing from YOLOX ball and person detections on every frame.
+    ``contact_frame``: when the bat reaches the ball (default: the middle of the clip). ``detect(frame)`` replaces
+    YOLOX (tests). Returns {"kind", "reason", "frames", "frames_with_ball", "flight" | None, "exit_speed_mph",
+    "launch_angle_deg", "tracks"}."""
+    detect = detect or (lambda fr: yolo_detect(fr, (COCO_SPORTS_BALL, COCO_PERSON), min_score=0.12))
+    pts, people, n = [], [], 0
+    for i, fr in enumerate(frames):
+        n += 1
+        for c, sc, x, y, w, h in detect(fr):
+            if c == COCO_SPORTS_BALL:
+                pts.append((i, x, y, min(w, h)))
+            elif c == COCO_PERSON and sc >= 0.3:
+                people.append((x, w))
+    c0 = n // 2 if contact_frame is None else int(contact_frame)
+    lo, hi = c0 - int(before_s * fps), c0 + int(after_s * fps)
+    px = float(np.median([p[0] for p in people])) if people else None
+    pw = float(np.median([p[1] for p in people])) if people else None
+    trs = link_detections(pts)
+    sizes = [p[3] for p in pts if p[3] > 2]
+    m_per_px = 2 * BALL_RADIUS_M / float(np.median(sizes)) if sizes else None
+    flights, near = [], []
+    for t in trs:
+        (i0, x0, y0, _), (i1, x1, y1, _) = t[0], t[-1]
+        speed = float(np.hypot(x1 - x0, y1 - y0)) / max(1, i1 - i0)
+        away = px is None or (x1 - x0) * (x0 - px) > 0 or (y1 - y0) < -2 * abs(x1 - x0)
+        if speed >= MIN_FLIGHT_PX_PER_FRAME and away and lo <= i0 <= hi:
+            flights.append((t, speed))
+        elif i1 >= lo and i0 <= c0 + int(0.1 * fps) and (px is None or abs(np.median([p[1] for p in t]) - px) <= 1.5 * (pw or 400)):
+            near.append(t)
+    out = {"frames": n, "frames_with_ball": len({p[0] for p in pts}), "flight": None, "exit_speed_mph": None,
+           "launch_angle_deg": None, "tracks": len(trs), "scale_m_per_px": m_per_px}
+    if flights:
+        t, speed = max(flights, key=lambda f: len(f[0]) * f[1])
+        (i0, x0, y0, _), (i1, x1, y1, _) = t[0], t[-1]
+        out["flight"] = {"frames": [int(i0), int(i1)], "from_px": [round(x0), round(y0)], "to_px": [round(x1), round(y1)],
+                         "px_per_frame": round(speed, 1)}
+        if m_per_px:
+            out["exit_speed_mph"] = round(speed * fps * m_per_px * 2.2369363, 1)
+        out["launch_angle_deg"] = round(float(np.degrees(np.arctan2(-(y1 - y0), abs(x1 - x0)))), 1)
+        return {**out, "kind": "hit", "reason": f"the ball detector saw the ball fly away from the hitter after contact "
+                                                f"({len(t)} frames)"}
+    if near:
+        return {**out, "kind": "miss", "reason": "the ball detector saw the ball by the hitter at contact, but nothing flew "
+                                                 "away (swing and miss)"}
+    return {**out, "kind": "none", "reason": "the ball detector saw no ball near the hitter around contact"}

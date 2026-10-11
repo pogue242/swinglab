@@ -131,3 +131,28 @@ def test_tracker_hit_without_a_detected_ball_is_a_dry_swing(monkeypatch):
     assert rec["mode"] == "dry" and "found no ball" in rec["mode_evidence"] and rec["ball_check"]["tracker"] == "hit"
     pipeline.decide_mode(rec, detect=_fake_detector({i: (402.0, 498.0) for i in range(0, 40)}))
     assert rec["mode"] == "hit" and rec["ball_check"]["confirmed"]
+
+
+@pytest.mark.real_ball_check
+def test_detector_reads_a_toss_hit_and_a_miss():
+    """TestSet4: the ball vanishes at the bat and reappears flying away; a miss keeps falling by the hitter."""
+    fps, n = 240.0, 200
+    person = (B.COCO_PERSON, 0.9, 200.0, 500.0, 150.0, 400.0)
+
+    def scene(hit):
+        def detect(i):
+            out = [person]
+            if i < 100:                                    # the toss coming down by the hitter
+                out.append((B.COCO_SPORTS_BALL, 0.5, 260.0, 200.0 + 3 * i, 12.0, 12.0))
+            elif hit and 108 <= i < 140:                   # hidden at the bat, then flies away from the hitter
+                out.append((B.COCO_SPORTS_BALL, 0.5, 300.0 + 18 * (i - 108), 480.0 - 8 * (i - 108), 12.0, 12.0))
+            elif not hit and i < 130:
+                out.append((B.COCO_SPORTS_BALL, 0.5, 262.0, 200.0 + 3 * i, 12.0, 12.0))
+            return out
+        return detect
+    h = B.detector_ball_outcome(range(n), fps=fps, detect=scene(True))
+    assert h["kind"] == "hit" and h["flight"]["px_per_frame"] > 15 and h["launch_angle_deg"] > 0
+    m = B.detector_ball_outcome(range(n), fps=fps, detect=scene(False))
+    assert m["kind"] == "miss" and m["flight"] is None
+    none = B.detector_ball_outcome(range(n), fps=fps, detect=lambda i: [person])
+    assert none["kind"] == "none"
