@@ -62,21 +62,33 @@ def hitter_warnings(h: dict) -> list[str]:
 
 def lift_recording(folder: str | Path, *, pose_model: str | Path | None = None, keypoints_fn=None,
                    min_vis: float = 0.5, height_m: float | None = None, bone_fallback: bool = True,
-                   pose_fps: float | None = None):
+                   pose_fps: float | None = None, use_mediapipe_3d: bool = True):
     """Stray Scanner folder or Record3D export -> (timestamps, cleaned world-frame joints, quality).
     Pose runs once. Keypoints below ``min_vis`` MediaPipe visibility get no depth sample; with
-    ``bone_fallback`` a limb joint without usable depth is placed by bone length (capture.lift_keypoints)."""
+    ``bone_fallback`` a limb joint without usable depth is placed by bone length (capture.lift_keypoints).
+    With MediaPipe (no ``keypoints_fn``) and ``use_mediapipe_3d``, the joints are MediaPipe's 3D pose
+    anchored by the LiDAR (capture.lift_world); quality["lift"] says which was used."""
     cap = capture.load_any(folder)
     pose_model = pose_model or config.MODELS / "pose_landmarker_heavy.task"
     # pose on every n-th frame: the model works at config.PHONE_FPS (30) and MediaPipe is the slowest
     # stage (~12 frames/s on a laptop CPU), so a 60 fps Record3D clip needs only every second frame
     every = 1 if keypoints_fn else max(1, int(round(cap.fps / (pose_fps or config.PHONE_FPS))))
-    kps, size = (keypoints_fn or (lambda v: capture.mediapipe_keypoints(v, pose_model, every=every, fps=cap.fps)))(cap.video)
+    world: dict = {}
+    kps, size = (keypoints_fn or (lambda v: capture.mediapipe_keypoints(v, pose_model, every=every, fps=cap.fps,
+                                                                        world=world)))(cap.video)
     lift_info: dict = {}
     joints = capture.lift_keypoints(cap, kps, size, min_vis=min_vis, height_m=height_m,
                                     bone_fallback=bone_fallback, info=lift_info)
     valid = float(np.mean([np.isfinite(v[:, 0]).mean() for v in joints.values()]))
     joints, replaced = capture.clean_joints(joints, cap.timestamps)
+    # body shape from MediaPipe 3D, position from the LiDAR (lift_world); depth-only joints if it can't anchor
+    hybrid = capture.lift_world(cap, world, joints, info=lift_info) if world and use_mediapipe_3d else None
+    if hybrid is not None:
+        joints = hybrid
+        # bone-length placement only shaped the LiDAR anchor here, not the joints: keep it out of the warnings
+        lift_info["depth_placed_by_bone_length"] = lift_info.pop("placed_by_bone_length", {})
+    else:
+        lift_info["lift"] = "lidar_depth"
     quality = {"source_app": cap.kind, "pose_frames": len(kps), "frames": cap.n, "capture_fps": round(cap.fps, 1),
                "duration_s": round(float(cap.timestamps[-1] - cap.timestamps[0]), 2),
                "valid_joint_fraction": round(valid, 3),
@@ -490,7 +502,7 @@ def analyze_recording(lidar: str | Path | None, slowmo: str | Path | None, hitte
                           "stages": {"lidar": {"ok": False, "error": f"{type(e).__name__}: {e}"}}}],
                 "summary": None, "n_swings": 0}
     t, joints, q = lifted
-    wins = session.find_swings(t, joints)
+    wins = session.find_swings(t, joints, bats=hitter["bats"])
     recs = []
     for k, w in enumerate(wins or [None]):
         rid = Path(lidar).stem if len(wins) <= 1 else f"{Path(lidar).stem}-{k + 1:02d}"
@@ -498,9 +510,13 @@ def analyze_recording(lidar: str | Path | None, slowmo: str | Path | None, hitte
             ts, js = session.cut(t, joints, w) if w is not None else (t, joints)
             r = analyze_joints(ts, js, hitter, rid, q)
             if w is None:
-                r["warnings"].append("no clear swing found (hand speed never reached a swing's); analyzed the whole clip")
+                r["warnings"].append("no complete swing found (hand speed and shoulder turn never reached a swing's; "
+                                     "the recording may start after the swing); analyzed the whole clip, numbers unreliable")
             else:
                 r["window"] = asdict(w)
+                if w.partial:
+                    r["warnings"].append("the recording starts mid-swing: the stance and load were not filmed, so "
+                                         "stance, stride and timing numbers for this swing are unreliable")
             r["stages"] = {"lidar": {"ok": True, **r["quality"]}}
         except Exception as e:
             r = {"id": rid, "hitter": hitter.get("name", ""), "window": asdict(w) if w else None,

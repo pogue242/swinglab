@@ -25,6 +25,7 @@ from . import features, kinematics as K
 MIN_PEAK_HAND_SPEED = 3.5      # m/s
 MIN_GAP_S = 2.0                # two swings closer than this are one swing
 PRE_S, POST_S = 1.6, 0.8       # window around the peak hand speed
+MIN_PRE_S = 0.6                # less recording than this before the peak: the stance and load are cut off
 # Clip vs session is decided by CONTENT (number of swings found), not by duration.
 
 
@@ -35,6 +36,7 @@ class SwingWindow:
     peak: float
     end: float
     peak_hand_speed: float
+    partial: bool = False          # the recording starts mid-swing (less than MIN_PRE_S before the peak)
 
 
 def hand_speed(t: np.ndarray, joints: dict[str, np.ndarray]) -> np.ndarray:
@@ -51,10 +53,13 @@ def hand_speed(t: np.ndarray, joints: dict[str, np.ndarray]) -> np.ndarray:
 MIN_SHOULDER_TURN_DEG = 80.0   # lab swings turn the shoulders 133–260° around the hand-speed peak (677 swings); noise peaks < 55°
 
 
-def shoulder_turn(t: np.ndarray, joints: dict[str, np.ndarray], i: int, before_s: float = 0.6, after_s: float = 0.4) -> float:
+def shoulder_turn(t: np.ndarray, joints: dict[str, np.ndarray], i: int, before_s: float = 0.6, after_s: float = 0.4,
+                  bats: str | None = None) -> float:
     """How far (deg) the shoulder line turns about the vertical around frame i, in any fixed frame
     (vertical = from the ankles to the shoulders). Shoulders are the best-measured joints, so this
-    separates a real swing from noise in the hand positions."""
+    separates a real swing from noise in the hand positions. With ``bats`` ("R"/"L") only the turn
+    toward the pitcher counts (the largest opening rotation in the window), so a bat waggle, the
+    return to stance or a flip of the shoulder line doesn't pass for a swing; without it, the range."""
     pre = next((pr for pr in (("l_", "r_"), ("lead_", "rear_")) if f"{pr[0]}shoulder" in joints and f"{pr[0]}ankle" in joints), None)
     if pre is None:
         return 360.0                                   # can't tell: don't veto
@@ -70,18 +75,26 @@ def shoulder_turn(t: np.ndarray, joints: dict[str, np.ndarray], i: int, before_s
     m = (t >= t[i] - before_s) & (t <= t[i] + after_s) & np.isfinite(sh[:, 0])
     if m.sum() < 3:
         return 0.0
-    yaw = np.degrees(np.unwrap(np.arctan2(sh[m] @ b, sh[m] @ a)))
-    return float(np.ptp(yaw))
+    yaw = np.degrees(np.unwrap(np.arctan2(sh[m] @ b, sh[m] @ a)))   # counterclockwise seen from above = +
+    if bats is None:
+        return float(np.ptp(yaw))
+    if L == "lead_":
+        yaw = -yaw if bats.upper() == "L" else yaw    # lead/rear named: lead - rear opens like a righty's l - r
+    elif bats.upper() == "L":
+        yaw = -yaw                                     # a righty's l - r line opens counterclockwise, a lefty's clockwise
+    return float(np.max(yaw - np.minimum.accumulate(yaw)))
 
 
 def find_swings(t: np.ndarray, joints: dict[str, np.ndarray], *, min_peak: float = MIN_PEAK_HAND_SPEED,
-                min_gap: float = MIN_GAP_S, min_turn: float = MIN_SHOULDER_TURN_DEG) -> list[SwingWindow]:
+                min_gap: float = MIN_GAP_S, min_turn: float = MIN_SHOULDER_TURN_DEG,
+                bats: str | None = None) -> list[SwingWindow]:
     """Swings = hand-speed peaks above ``min_peak`` (m/s) where the shoulders also turn at least
-    ``min_turn`` degrees: hand positions rebuilt without depth can be noisy enough to make false
-    speed peaks (night test, 2026-10-10), but the torso doesn't turn for noise."""
+    ``min_turn`` degrees (toward the pitcher, given ``bats``): hand positions rebuilt without depth
+    can be noisy enough to make false speed peaks (night test, 2026-10-10), but the torso doesn't
+    turn for noise. A swing with less than MIN_PRE_S of recording before its peak is ``partial``."""
     v = hand_speed(t, joints)
     cand = [i for i in range(1, len(v) - 1) if v[i] >= min_peak and v[i] >= v[i - 1] and v[i] >= v[i + 1]
-            and shoulder_turn(t, joints, i) >= min_turn]
+            and shoulder_turn(t, joints, i, bats=bats) >= min_turn]
     cand.sort(key=lambda i: -v[i])           # strongest first, then suppress neighbors
     chosen: list[int] = []
     for i in cand:
@@ -90,7 +103,8 @@ def find_swings(t: np.ndarray, joints: dict[str, np.ndarray], *, min_peak: float
     out = []
     for k, i in enumerate(sorted(chosen)):
         out.append(SwingWindow(k + 1, float(max(t[0], t[i] - PRE_S)), float(t[i]),
-                               float(min(t[-1], t[i] + POST_S)), round(float(v[i]), 2)))
+                               float(min(t[-1], t[i] + POST_S)), round(float(v[i]), 2),
+                               partial=bool(t[i] - t[0] < MIN_PRE_S)))
     return out
 
 
@@ -103,7 +117,7 @@ def analyze_long(folder: str | Path, hitter: dict, *, lifted=None, windows=None,
     """``lifted`` = (t, joints, quality) from pipeline.lift_recording to avoid running pose twice."""
     from . import pipeline
     t, joints, q = lifted or pipeline.lift_recording(folder, height_m=float(hitter["height_m"]), **kw)
-    wins = windows if windows is not None else find_swings(t, joints)
+    wins = windows if windows is not None else find_swings(t, joints, bats=hitter.get("bats"))
     recs = []
     for w in wins:
         ts, js = cut(t, joints, w)

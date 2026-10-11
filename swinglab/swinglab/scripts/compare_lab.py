@@ -49,12 +49,13 @@ def fmt(v: float, unit: str) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--glob", action="append", help="pattern under userdata/swings/ (repeatable)")
+    ap.add_argument("--root", default=str(ROOT / "userdata/swings"), help="folder holding <profile>/<id>.json")
     ap.add_argument("--lab", default=str(ROOT / "data/processed/features_30fps.csv"))
     args = ap.parse_args()
 
-    files = sorted(f for g in (args.glob or DEFAULT_GLOBS) for f in (ROOT / "userdata/swings").glob(g)
+    files = sorted(f for g in (args.glob or DEFAULT_GLOBS) for f in Path(args.root).glob(g)
                    if not f.name.startswith("_summary_"))
-    swings = [json.loads(f.read_text()) for f in files]
+    swings = [json.loads(f.read_text(encoding="utf-8")) for f in files]
     lab = pd.read_csv(args.lab)
     names = [short_name(s["id"]) for s in swings]
 

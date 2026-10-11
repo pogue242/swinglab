@@ -119,3 +119,20 @@ def test_summary_counts_hits_misses_and_dry_swings():
     assert [p["outcome"] for p in s["per_swing"]] == ["hit", "miss", "dry", "hit"]
     from swinglab.coach import cues
     assert "2 hits, 1 misses, 1 dry swings" in cues.session_report(s).headline
+
+
+def test_only_a_turn_toward_the_pitcher_is_a_swing():
+    """TestSet2: a recording that starts at the follow-through (Matteo lidar 6) turned the shoulders
+    back toward stance, which the range-only check counted as a swing; the opening turn does not."""
+    t, J = long_recording()
+    assert len(session.find_swings(t, J, bats="R")) == 5
+    assert session.find_swings(t, J, bats="L") == []        # same motion = a lefty turning away from the pitcher
+    tl, Jl = t, body_from_yaw(t, np.radians(150) * (t > 1.8) * np.clip((t - 1.8) / 0.2, 0, 1), bats="L")
+    assert len(session.find_swings(tl, Jl, bats="L")) == 1
+
+
+def test_swing_cut_off_by_the_recording_start_is_partial():
+    t, J = long_recording(n_swings=2)
+    keep = t >= 1.6                                        # recording starts 0.3 s before the first peak
+    wins = session.find_swings(t[keep], {k: v[keep] for k, v in J.items()}, bats="R")
+    assert [w.partial for w in wins] == [True, False]

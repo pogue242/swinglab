@@ -352,6 +352,65 @@ def clean_joints(joints: dict[str, np.ndarray], t: np.ndarray, *, jump_m: float 
     return out, replaced
 
 
+TORSO_JOINTS = ("l_shoulder", "r_shoulder", "l_hip", "r_hip")
+MIN_ANCHOR_FRAMES = 0.3     # lift_world needs LiDAR torso positions in at least this share of the posed frames
+
+
+def lift_world(cap: Capture, world: dict[int, dict[str, tuple[float, float, float]]],
+               depth_joints: dict[str, np.ndarray], *, smooth_s: float = 0.25,
+               info: dict | None = None) -> dict[str, np.ndarray] | None:
+    """MediaPipe's metric 3D landmarks, placed in the session (world) frame by the LiDAR.
+
+    Why: the camera usually faces the hitter's chest, so in the swing the shoulders and hips turn
+    toward / away from the camera and one of each pair hides behind the body. The depth under a
+    hidden joint belongs to the near side, so depth-only joints flip the shoulder and hip lines by
+    ~180° (TestSet2: impossible 198° separations, "hip turn" of -22°, 2 of 9 swings missed).
+    MediaPipe's 3D pose keeps the body's shape through the turn, but it is centered on the hips and
+    has no position in the room. So: body shape = MediaPipe 3D, rotated into the world by the camera
+    pose; scale = LiDAR torso length / MediaPipe torso length; position = the median over the torso
+    joints of (LiDAR position - MediaPipe position), smoothed over ``smooth_s`` (the torso is the
+    best-measured part). Returns None when there are too few LiDAR torso positions to anchor it."""
+    from scipy.ndimage import median_filter
+    if not world:
+        return None
+    from .skeleton import MEDIAPIPE
+    names = list(MEDIAPIPE.values())
+    flip = np.diag([1.0, -1.0, -1.0])
+    rel = {n: np.full((cap.n, 3), np.nan) for n in names}
+    for i, f in world.items():
+        R = quat_to_R(cap.cam_quat[i]) @ flip
+        for n in names:
+            if n in f:
+                rel[n][i] = R @ np.asarray(f[n], float)
+
+    def torso_len(P):
+        return np.linalg.norm(0.5 * (P["l_shoulder"] + P["r_shoulder"]) - 0.5 * (P["l_hip"] + P["r_hip"]), axis=1)
+    if any(n not in depth_joints for n in TORSO_JOINTS):
+        return None
+    ld, lm = torso_len(depth_joints), torso_len(rel)
+    both = np.isfinite(ld) & np.isfinite(lm)
+    if both.sum() < max(5, MIN_ANCHOR_FRAMES * len(world)):
+        return None
+    scale = float(np.median(ld[both]) / np.median(lm[both]))
+    for n in names:
+        rel[n] *= scale
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)          # frames with no torso position: all-NaN
+        anchor = np.nanmedian(np.stack([depth_joints[n] - rel[n] for n in TORSO_JOINTS]), axis=0)
+    ok = np.isfinite(anchor[:, 0])
+    idx = np.arange(cap.n)
+    anchor = np.c_[[np.interp(idx, idx[ok], anchor[ok, a]) for a in range(3)]].T
+    anchor = median_filter(anchor, size=(int(smooth_s * cap.fps) | 1, 1), mode="nearest")
+    from .kinematics import smooth
+    anchor = smooth(anchor, cap.fps, smooth_s)
+    if info is not None:
+        info["lift"] = "mediapipe_3d_with_lidar_anchor"
+        info["mediapipe_scale"] = round(scale, 3)
+        info["anchor_frames"] = round(float(ok[list(world)].mean()), 3)
+    return {n: np.where(np.isfinite(rel[n][:, :1]), rel[n] + anchor, np.nan) for n in names}
+
+
 WORLD_UP_ARKIT = np.array([0.0, 1.0, 0.0])  # pass as ``up`` to skeleton.build for world-frame joints
 
 
@@ -373,7 +432,8 @@ POSE_MODEL_URL = ("https://storage.googleapis.com/mediapipe-models/pose_landmark
                   "pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task")
 
 
-def mediapipe_keypoints(video: str | Path, model_path: str | Path, every: int = 1, fps: float | None = None):
+def mediapipe_keypoints(video: str | Path, model_path: str | Path, every: int = 1, fps: float | None = None,
+                        world: dict | None = None):
     """MediaPipe Pose Landmarker (Tasks API, mediapipe>=0.10.30) on a video or an
     image sequence such as Record3D's ``rgbd/%d.jpg``.
 
@@ -382,6 +442,8 @@ def mediapipe_keypoints(video: str | Path, model_path: str | Path, every: int = 
     The legacy ``mp.solutions.pose`` API no longer exists in current releases.
     ``fps``: the true capture rate. Pass it for image sequences: OpenCV reports
     25 fps for any ``%d.jpg`` sequence, which skews MediaPipe's time-based tracking.
+    ``world``: a dict that receives MediaPipe's own metric 3D landmarks, {frame: {name: (x, y, z)}}
+    (camera-aligned axes, x right, y down, z away from the camera, origin between the hips): see lift_world.
     """
     import cv2
     import mediapipe as mp
@@ -402,6 +464,9 @@ def mediapipe_keypoints(video: str | Path, model_path: str | Path, every: int = 
                     lm = r.pose_landmarks[0]
                     out[i] = {name: (lm[k].x * size[0], lm[k].y * size[1], lm[k].visibility or 1.0)
                               for k, name in MEDIAPIPE.items()}
+                    if world is not None and r.pose_world_landmarks:
+                        wl = r.pose_world_landmarks[0]
+                        world[i] = {name: (wl[k].x, wl[k].y, wl[k].z) for k, name in MEDIAPIPE.items()}
     return out, size
 
 

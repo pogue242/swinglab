@@ -136,7 +136,7 @@ def test_long_clip_with_one_swing_is_single_and_short_clip_works(tmp_path):
     t2, J2 = synthetic_swing(fps=30, T=4.0, smooth=True, hip_rate=500)
     kps2 = render_stray(tmp_path / "slow", t2, J2)
     out2 = pipeline.analyze_recording(tmp_path / "slow", None, hitter, use_gemini=False, keypoints_fn=lambda v: (kps2, (W, H)))
-    assert len(out2["recs"]) == 1 and any("no clear swing" in w for w in out2["recs"][0]["warnings"])
+    assert len(out2["recs"]) == 1 and any("no complete swing" in w for w in out2["recs"][0]["warnings"])
 
 
 def test_save_result_builds_index(tmp_path):
