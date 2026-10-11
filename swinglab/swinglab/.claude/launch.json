@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "swinglab-server",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["api/server.py", "--port", "8000", "--demo"],
+      "port": 8000
+    },
+    {
+      "name": "swinglab-demo",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["api/server.py", "--port", "8000", "--demo"],
+      "port": 8000
+    }
+  ]
+}
