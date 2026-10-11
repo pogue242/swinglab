@@ -349,6 +349,20 @@ dialog h2{font:700 24px var(--display);letter-spacing:.04em}
 .em-note{font-size:11px;color:var(--warn);margin-left:2px}
 .cview{margin:6px 0 10px;font-size:14px;color:var(--ink);border-left:3px solid var(--steel);padding-left:10px}
 .cview b{color:var(--steel);font-weight:600}
+/* ---- swing rail: List / By video (FUNC, 2026-10-11) ---- */
+.rmode{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-left:auto;margin-right:8px}
+.rmode button{border:0;background:#fff;font:500 11px var(--body);color:var(--muted);padding:3px 8px;cursor:pointer}
+.rmode button[aria-pressed="true"]{background:var(--navy);color:#fff}
+.rgroup{border-bottom:1px solid var(--line)}
+.rgroup>summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 16px;font-size:13px}
+.rgroup>summary::-webkit-details-marker{display:none}
+.rgroup>summary .gt{display:flex;flex-direction:column;min-width:0}
+.rgroup>summary .gt b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rgroup>summary .gn{font:600 20px/1 var(--display);font-variant-numeric:tabular-nums}
+.rgroup>summary .gn small{display:block;font:11px var(--body);color:var(--muted);text-align:right}
+.rgroup>summary::before{content:"\25B8";color:var(--muted);font-size:11px;margin-right:-2px}
+.rgroup[open]>summary::before{content:"\25BE"}
+.rgroup ol{list-style:none;margin:0;padding:0 0 6px 18px}
 </style>
 </head>
 <body>
@@ -377,7 +391,7 @@ dialog h2{font:700 24px var(--display);letter-spacing:.04em}
 
 <div id="view-hitter" class="hlayout" hidden>
   <aside class="rail" id="rail" aria-label="Swings" hidden>
-    <div class="railhead"><h2>Swings</h2><span id="swingCount"></span></div>
+    <div class="railhead"><h2>Swings</h2><span class="rmode" role="group" aria-label="Show swings as"><button type="button" data-m="list" aria-pressed="true">List</button><button type="button" data-m="video" aria-pressed="false">By video</button></span><span id="swingCount"></span></div>
     <ol class="raillist" id="railList"></ol>
   </aside>
 
@@ -627,13 +641,29 @@ const MODE_LABEL={hit:"hit",miss:"miss",dry:"dry swing",lab:"lab"};
 const num=v=>v==null||!isFinite(v)?"–":Math.round(v);
 function swingTitle(i){const s=SWINGS[i],w=when(s.recorded_at),p=partOf(i);
   return w?{d:w.date,t:w.time,full:`${w.date}, ${w.year} · ${w.time}`,part:p}:{d:"Lab swing",t:String(s.id||"").slice(-14),full:`Lab swing ${s.id||""}`,part:null}}
+let RAILMODE=(()=>{try{return localStorage.getItem("railMode")||"list"}catch(e){return "list"}})();
+document.querySelectorAll(".rmode button").forEach(b=>b.onclick=()=>{RAILMODE=b.dataset.m;try{localStorage.setItem("railMode",RAILMODE)}catch(e){}renderRail()});
+function railBtn(i,inGroup){const s=SWINGS[i],T=swingTitle(i),sc=s.scores||{};
+  const what=inGroup&&T.part?`Swing ${T.part.k} of ${T.part.n}`:esc(T.d)+(T.part?` <span class="fine">· ${T.part.k}/${T.part.n}</span>`:"");
+  return `<li><button class="rbtn" data-i="${i}" aria-current="${i===SI}" aria-label="Swing ${esc(T.full)}, ${esc(MODE_LABEL[s.mode]||s.mode)}, overall ${num(sc.overall)}">
+      <span><span class="d">${what}</span><span class="t">${esc(T.t)} · <span class="mtxt ${esc(s.mode)}">${esc(s.mode==="dry"?"dry":MODE_LABEL[s.mode]||s.mode)}</span></span></span>
+      <span class="n">${num(sc.overall)}</span></button></li>`}
+// "By video": swings grouped by the recording they were cut from (ids <recording>-01, -02…), newest first
+function railGroups(){const g=new Map();SWINGS.forEach((s,i)=>{const k=recOf(s)||String(s.id||i);if(!g.has(k))g.set(k,[]);g.get(k).push(i)});
+  return [...g.entries()].map(([k,ix])=>({k,ix,name:(ix.length>1?k:String(SWINGS[ix[0]].id||k)).replace(/^.*?__/,""),last:Math.max(...ix)})).sort((a,b)=>b.last-a.last)}
 function renderRail(){
   $("#swingCount").textContent=SWINGS.length||"";
-  const order=SWINGS.map((_,i)=>i).reverse();
-  $("#railList").innerHTML=order.map(i=>{const s=SWINGS[i],T=swingTitle(i),sc=s.scores||{};
-    return `<li><button class="rbtn" data-i="${i}" aria-current="${i===SI}" aria-label="Swing ${esc(T.full)}, ${esc(MODE_LABEL[s.mode]||s.mode)}, overall ${num(sc.overall)}">
-      <span><span class="d">${esc(T.d)}${T.part?` <span class="fine">· ${T.part.k}/${T.part.n}</span>`:""}</span><span class="t">${esc(T.t)} · <span class="mtxt ${esc(s.mode)}">${esc(s.mode==="dry"?"dry":MODE_LABEL[s.mode]||s.mode)}</span></span></span>
-      <span class="n">${num(sc.overall)}</span></button></li>`}).join("");
+  document.querySelectorAll(".rmode button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.m===RAILMODE)));
+  if(RAILMODE==="video"){
+    $("#railList").innerHTML=railGroups().map(G=>{const sc=G.ix.map(i=>(SWINGS[i].scores||{}).overall).filter(v=>v!=null),w=when(SWINGS[G.ix[0]].recorded_at);
+      const avg=sc.length?sc.reduce((a,b)=>a+b,0)/sc.length:null,open=G.ix.includes(SI);
+      return `<li><details class="rgroup"${open?" open":""}><summary><span class="gt"><b title="${esc(G.name)}">${esc(G.name)}</b>
+        <span class="fine">${w?esc(w.date+" · "+w.time)+" · ":""}${G.ix.length} swing${G.ix.length>1?"s":""}</span></span>
+        <span class="gn">${num(avg)}<small>${G.ix.length>1?"average":"overall"}</small></span></summary>
+        <ol>${G.ix.map(i=>railBtn(i,true)).join("")}</ol></details></li>`}).join("");
+  }else{
+    $("#railList").innerHTML=SWINGS.map((_,i)=>i).reverse().map(i=>railBtn(i,false)).join("");
+  }
   $("#railList").querySelectorAll(".rbtn").forEach(b=>b.onclick=()=>selectSwing(+b.dataset.i));
 }
 async function selectSwing(i){

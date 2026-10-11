@@ -64,6 +64,18 @@ Other additions:
   **Changed meaning**: `analysis.scores.power/transfer/posture/form/overall` are now weighted grades vs the
   lab spread, not percentiles of a predicted bat speed (typical lab swing ~70, not 50).
 
+### 2026-10-11 night: FUNC edited web/index.html (the user asked for it directly) — please merge with care
+- **Elite match panel** under the score (`#elitePanel`, `renderElite()`, CSS `.em-*`): one row per factor with
+  weight, % bar, verdict colour, and an (i) button that opens how it is calculated (help, rule, the measurements
+  vs elite). The headline's (i) explains the standard and the weighting.
+- **Coach card**: shows `report.coach_view` ("What the coach sees", Gemini's own read of the video) and says
+  "from the video and the measurements" when `report_source.video` is true.
+- **Swing rail**: a List / By video switch (`.rmode`, `RAILMODE` in localStorage, `railGroups()`); By video
+  groups swings by recording (`recOf`), each group collapsible with its average; the list stays the default.
+- **The AI no longer scores**: `explosiveness` is not added to `analysis.elite.factors` any more (old records may
+  still have it; the panel hides it). Weights changed: leg drive 2.5, shoulder/hip turn 2, hand speed /
+  front-leg block / step-through 1.5, contact point / stretch 0.5; `factors[].weight` carries them.
+
 ### 2026-10-11 late: the elite-match review (agreed with the user; local commit, not pushed yet)
 **Changed meaning:** `analysis.scores.form` / `overall` = the **elite match** (0–100: the mean of the factor
 percents below). `power` / `transfer` / `posture` stay as secondary group grades. `analysis.grading` =

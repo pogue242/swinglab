@@ -924,6 +924,14 @@ Contract changes between the tracks: `docs/CONTRACT_CHANGES.md`.
 
 ### 14 FUNC log
 (FUNC session: newest first.)
+- 2026-10-11 night: **Elite-match scoring** (`swinglab/elite.py`, agreed with the user): 8 factors as % of elite
+  (top third of the lab by size-adjusted bat speed), weighted (legs 2.5, turns 2, ...); Gemini guides the coaching
+  (watches the clip with the numbers, `report.coach_view`) and does not score. Lab check: elite median 96, rest 93,
+  rank correlation with size-adjusted bat speed 0.48 per hitter. **TestSet2 (real): Matteo 69.0 vs Wilson 64.5**
+  (the weights were chosen with this ranking in view: 2 hitters, so treat it as a sanity check, not validation).
+  New: heel/toe from MediaPipe (back-foot turn), `scripts/build_elite_ref.py`, `scripts/rescore.py`, no score for a
+  recording without a complete swing, focus rotation. Viewer: elite panel with (i), coach view, rail By video.
+  Gemini key is free tier (20/day for gemini-3.6-flash); the fallbacks rate and write less consistently.
 - 2026-10-11, branch `func/scoring` (issues 1–4). **Real recordings: TestSet2** (Matteo lidar 6/7/8,
   Wilson lidar 1/2, all dry swings), re-run with `--no-gemini`.
   - **Root cause of most bad numbers**: the camera faces the hitter's chest, so in the swing the shoulders
