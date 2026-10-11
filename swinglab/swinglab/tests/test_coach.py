@@ -357,3 +357,18 @@ def test_blind_rating_and_video_report_with_a_fake_client():
     assert not any(isinstance(c, str) and "{" in c for c in calls[0])      # blind: no numbers sent
     rep, info = gemini.report(make_payload(), client=fake, video=video)
     assert info["source"] == "gemini" and info["video"] and calls[1][0].video_metadata.fps == gemini.VIDEO_FPS
+
+
+@needs_models
+def test_a_lost_turn_is_not_scored():
+    """TestSet4 toss 7: 6.8 m/s hands with a 1.8° shoulder turn is a tracking failure, not a bad swing."""
+    import joblib
+    from swinglab import config, elite, model, scoring
+    models, scorers = model.load(), joblib.load(config.MODELS / "scorers.joblib")
+    row = model.load_table().iloc[0]
+    med = {f: m["elite"]["p50"] for f, m in elite.load_reference()["measurements"].items()}
+    feats = {**row[model.MECHANICS].to_dict(), **med, "hand_speed_peak": 6.8, "torso_turn_total": 1.8, "pelvis_turn_total": 0.0}
+    a = scoring.analyze(feats, models, scorers, row[model.COVARIATES].to_dict())
+    turns = {f["key"]: f for f in a["elite"]["factors"] if f["key"] in ("shoulder_turn", "hip_turn")}
+    assert all(f["percent"] is None for f in turns.values())
+    assert any(p.get("skipped") == scoring.LOST_TURN for f in turns.values() for p in f["parts"])
