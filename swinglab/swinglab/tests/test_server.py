@@ -200,3 +200,18 @@ def test_recordings_group_swings_with_the_whole_recording_video(tmp_path):
     assert s2["video_url"] == "userdata/swings/wilson/lidar 1-02.mp4" and s2["focus"] == "Hip turn"
     assert any(r["recording"] == "old" and r["video"] is None and r["swings"][0]["t"] is None for r in recs)
     assert c.get("/api/profiles/nobody/recordings").status_code == 404
+
+
+def test_recordings_find_the_inbox_named_summary(tmp_path):
+    """Drop-folder swings are saved as '<session>__<id>' with '_summary_<session>__<recording>.json'."""
+    c, _ = make(tmp_path)
+    d = tmp_path / "userdata" / "swings" / "wilson"
+    d.mkdir(parents=True, exist_ok=True)
+    for k in (1, 2):
+        rec = {"id": f"Wilson__lidar 1-0{k}", "recording": "lidar 1", "recording_t0": 0.0,
+               "window": {"start": 1.0 * k, "peak": 2.0 * k, "end": 3.0 * k}, "analysis": {"scores": {}}}
+        (d / f"Wilson__lidar 1-0{k}.json").write_text(json.dumps(rec), encoding="utf-8")
+    (d / "_summary_Wilson__lidar 1.json").write_text(json.dumps({"report": {"headline": "H"}}), encoding="utf-8")
+    (d / "_recording_Wilson__lidar 1.mp4").write_bytes(b"x")
+    rec = c.get("/api/profiles/wilson/recordings").json()["recordings"][0]
+    assert rec["headline"] == "H" and rec["video"]["url"].endswith("_recording_Wilson__lidar 1.mp4")

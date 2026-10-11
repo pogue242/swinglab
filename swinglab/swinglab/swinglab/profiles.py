@@ -201,7 +201,11 @@ def recordings(pid: str, r=None) -> list[dict]:
     out = []
     for name, sw in groups.items():
         sw.sort(key=lambda x: ((x["t"] or {}).get("peak", 0.0), x["id"] or ""))
+        # the inbox saves drop-folder swings as "<session>__<id>" and the summary as "<session>__<recording>"
         stem = Path(name).stem
+        prefixes = {x["id"].split("__")[0] + "__" for x in sw if "__" in (x["id"] or "")}
+        stem = next((p + stem for p in prefixes if (d / f"_summary_{p}{stem}.json").exists()
+                     or (d / f"_recording_{p}{stem}.mp4").exists()), stem)
         summ = d / f"_summary_{stem}.json"
         sm = {}
         if summ.exists():
