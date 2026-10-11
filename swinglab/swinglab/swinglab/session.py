@@ -195,7 +195,7 @@ def summarize(recs: list[dict], **meta) -> dict:
         "overall_score": {"mean": round(float(ov.mean()), 1), "trend_per_10_swings": _slope_per_10(ov)},
         "measured_exit_velo": None if not np.isfinite(meas).any() else
             {"mean": round(float(np.nanmean(meas)), 1), "max": round(float(np.nanmax(meas)), 1)},
-        "recurring_issue": recurring and {"feature": recurring, "label": features.FEATURES[recurring][1],
+        "recurring_issue": recurring and {"feature": recurring, "label": features.label(recurring),
                                           "swings": counts[recurring]},
         "best_swing": recs[best]["id"], "consistency": consistency,
     }

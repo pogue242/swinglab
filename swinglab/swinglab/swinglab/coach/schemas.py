@@ -36,6 +36,18 @@ class SwingReport(BaseModel):
     training_focus: str = Field(default="", description="One sentence: what the training plan targets and why")
     training_plan: list[TrainingItem] = Field(default_factory=list, max_length=5,
                                               description="3-4 exercises chosen ONLY from exercise_options")
+    video_notes: list[str] = Field(default_factory=list, max_length=4,
+                                   description="What the video shows about the focus factor that the numbers don't (empty without a video)")
+    disagreements: list[str] = Field(default_factory=list, max_length=3,
+                                     description="Where the video clearly disagrees with a measured factor; empty if none")
+
+
+class BlindRating(BaseModel):
+    """The AI coach's own look at the swing video, BEFORE it sees any numbers (Explosiveness factor)."""
+    rating: int = Field(ge=0, le=100, description="Overall athleticism and explosiveness, 0-100; 100 = like an elite college/pro hitter")
+    upper_body: str = Field(description="One sentence on the shoulder and hip turn as seen")
+    legs: str = Field(description="One sentence on the stride, plant, front-leg brace and back-foot turn as seen")
+    standout: str = Field(description="The one thing that stands out most, good or bad")
 
 
 class VideoRead(BaseModel):

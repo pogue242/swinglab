@@ -261,7 +261,7 @@ def test_unreliable_phone_measurements_are_not_graded():
     assert {n["feature"] for n in a["not_graded"]} == set(scoring.NOT_GRADED)
     slow = scoring.analyze({**feats, "hand_speed_peak": 3.0}, models, scorers, row[model.COVARIATES].to_dict())
     assert slow["scores"]["power"] < a["scores"]["power"] and slow["grades"]["hand_speed_peak"]["grade"] == 0.0
-    assert "scores_lab_model" in a and a["grading"] == "lab_range_v2"
+    assert "scores_lab_model" in a and a["grading"] == "elite_match_v1"
 
 
 @needs_models
@@ -286,5 +286,70 @@ def test_partial_swing_is_not_coached_on_its_stance():
     a = scoring.analyze(feats, models, scorers, row[model.COVARIATES].to_dict(), unreliable=unrel)
     assert not set(scoring.NEEDS_STANCE) & set(a["grades"]) and (a["focus"] or {}).get("feature") not in scoring.NEEDS_STANCE
     assert any(n["reason"] == scoring.PARTIAL_REASON for n in a["not_graded"])
-    assert a["scores"]["transfer"] is None and a["scores"]["form"] == round((a["scores"]["power"] + a["scores"]["posture"]) / 2, 1)
+    assert a["scores"]["transfer"] is None and a["scores"]["form"] == a["elite"]["match"]
+    skipped = [p for fc in a["elite"]["factors"] for p in fc["parts"] if p.get("skipped")]
+    assert {p["feature"] for p in skipped} == {f for fc in a["elite"]["factors"] for f in [p["feature"] for p in fc["parts"]]} & set(scoring.NEEDS_STANCE)
     assert all(c["feature"] not in scoring.NEEDS_STANCE for cs in a["contributions"].values() for c in cs)
+
+
+# ---------------------------------------------------------------- elite match (2026-10-11)
+
+REF = {"definition": "test", "measurements": {
+    "hand_speed_peak": {"elite": {"p10": 6.5, "p25": 6.8, "p50": 7.0, "p75": 7.3, "p90": 7.6},
+                        "all": {"p2.5": 5.5, "p5": 5.8, "p50": 6.8, "p95": 7.6, "p97.5": 7.8}},
+    "lead_knee_flex_contact": {"elite": {"p10": 5.0, "p25": 8.0, "p50": 13.0, "p75": 18.0, "p90": 22.0},
+                               "all": {"p2.5": 2.0, "p5": 4.0, "p50": 15.0, "p95": 30.0, "p97.5": 34.0}},
+    "stride_length": {"elite": {"p10": 0.02, "p25": 0.06, "p50": 0.11, "p75": 0.16, "p90": 0.2},
+                      "all": {"p2.5": -0.02, "p5": 0.0, "p50": 0.11, "p95": 0.22, "p97.5": 0.26}}},
+       "size_matched": {"hand_speed_peak": [[1.75, 80, 6.0]] * 30 + [[1.95, 100, 8.0]] * 30}}
+
+
+def test_elite_percent_rules():
+    from swinglab import elite
+    assert elite.part_percent("hand_speed_peak", 5.6, "ratio", REF, 1.95, 100)[0] == 70.0        # 5.6 / 8.0
+    assert elite.part_percent("hand_speed_peak", 5.4, "ratio", REF, 1.75, 80)[0] == 90.0         # size-matched: / 6.0
+    assert elite.part_percent("lead_knee_flex_contact", 18.0, "lower", REF)[0] == 100.0
+    assert elite.part_percent("lead_knee_flex_contact", 26.0, "lower", REF)[0] == 50.0           # halfway to p97.5
+    assert elite.part_percent("stride_length", 0.11, "range", REF)[0] == 100.0
+    assert elite.part_percent("stride_length", 0.30, "range", REF)[0] == 0.0
+    assert elite.part_percent("rear_foot_turn", 20.0, "heel_turn", REF)[0] == 50.0               # coaching rule
+    assert elite.part_percent("rear_foot_turn", float("nan"), "heel_turn", REF)[0] is None
+
+
+@needs_models
+def test_elite_match_headline_count_and_ai_factor():
+    from swinglab import elite
+    ref = elite.load_reference()
+    med = {f: m["elite"]["p50"] for f, m in ref["measurements"].items()}
+    el = elite.match({**med, "rear_foot_turn": 40.0}, height_m=1.8, mass_kg=85, ref=ref)
+    assert el["n_judged"] == len(elite.FACTORS) and el["match"] >= 95 and el["at_elite"] >= len(elite.FACTORS) - 1
+    weak = elite.match({**med, "rear_foot_turn": 40.0, "lead_knee_extension": -20.0, "lead_knee_flex_contact": 60.0}, ref=ref)
+    fc, part = elite.weakest(weak)
+    assert fc["key"] == "front_leg_block" and fc["verdict"] == "work on" and weak["match"] < el["match"]
+    elite.with_ai(weak, 20, "slow and stiff", {"model": "m"})
+    assert weak["n_judged"] == len(elite.FACTORS) + 1 and weak["factors"][-1]["label"].startswith("Explosiveness")
+    assert elite.weakest(weak)[0]["key"] == "front_leg_block"          # the AI factor is never the focus
+    assert elite.match({}, ref=ref)["match"] is None
+
+
+def test_blind_rating_and_video_report_with_a_fake_client():
+    from swinglab.coach.schemas import BlindRating
+    calls = []
+
+    class Resp:
+        def __init__(self, obj):
+            self.parsed, self.text, self.model_version = obj, obj.model_dump_json(), "fake"
+
+    class Models:
+        def generate_content(self, model, contents, config):
+            calls.append(contents)
+            if config.response_schema is BlindRating:
+                return Resp(BlindRating(rating=72, upper_body="full turn", legs="soft plant", standout="quick hands"))
+            return Resp(SwingReport.model_validate(json.loads(cues.report(make_payload()).model_dump_json())))
+    fake = SimpleNamespace(models=Models())
+    video = SimpleNamespace(uri="files/x", mime_type="video/mp4")
+    r, info = gemini.blind_rating(video, client=fake)
+    assert r.rating == 72 and info["source"] == "gemini"
+    assert not any(isinstance(c, str) and "{" in c for c in calls[0])      # blind: no numbers sent
+    rep, info = gemini.report(make_payload(), client=fake, video=video)
+    assert info["source"] == "gemini" and info["video"] and calls[1][0].video_metadata.fps == gemini.VIDEO_FPS

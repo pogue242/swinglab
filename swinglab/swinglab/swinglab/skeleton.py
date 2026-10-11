@@ -39,6 +39,10 @@ MEDIAPIPE = {
     11: "l_shoulder", 12: "r_shoulder", 13: "l_elbow", 14: "r_elbow", 15: "l_wrist", 16: "r_wrist",
     23: "l_hip", 24: "r_hip", 25: "l_knee", 26: "r_knee", 27: "l_ankle", 28: "r_ankle",
 }
+# Heel and toe (MediaPipe "foot index"): only from MediaPipe's 3D pose (capture.lift_world), carried as
+# Skeleton extras, used for the back-foot turn (features.rear_foot_turn). The lab data has no foot markers.
+MEDIAPIPE_FEET = {29: "l_heel", 30: "r_heel", 31: "l_toe", 32: "r_toe"}
+FOOT_EXTRAS = ("lead_heel", "rear_heel", "lead_toe", "rear_toe")
 
 
 @dataclass

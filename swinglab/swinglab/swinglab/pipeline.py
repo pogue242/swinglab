@@ -114,7 +114,8 @@ def analyze_joints(t: np.ndarray, joints: dict, hitter: dict, rec_id: str, quali
                          + f"; need {MIN_JOINT_COVERAGE:.0%}. Usually no depth on that body part (dark clothing, "
                          "fast motion, out of range) or it was hidden; check the pose overlay and check_recording.py")
     # resample to the SAME rate the model was trained at (config.PHONE_FPS)
-    sk = skeleton.build(t, joints, hitter["bats"], up=capture.WORLD_UP_ARKIT,
+    feet = tuple(e for e in skeleton.FOOT_EXTRAS if e in lr)
+    sk = skeleton.build(t, joints, hitter["bats"], up=capture.WORLD_UP_ARKIT, extras=feet,
                         height_m=float(hitter["height_m"]), fps=config.PHONE_FPS)
     s = K.series(sk)
     ev = K.detect_events(sk, s)
@@ -558,13 +559,66 @@ def analyze_recording(lidar: str | Path | None, slowmo: str | Path | None, hitte
     return {"recs": recs, "summary": summary, "n_swings": len(wins)}
 
 
+def swing_clip(rec: dict, out_base: Path, *, height: int = 720) -> Path | None:
+    """A plain (no overlay) MP4 of this swing's frames from the recording's color video, for the AI coach."""
+    import cv2
+    from .render import open_writer
+    v = rec.get("video") or {}
+    if not v.get("path") or not v.get("frames"):
+        return None
+    writer = path = None
+    try:
+        for fr in read_frames(v["path"], *v["frames"]):
+            h, w = fr.shape[:2]
+            size = (int(round(w * height / h / 2)) * 2, height)
+            if writer is None:
+                writer, path, _ = open_writer(out_base, v.get("fps") or 60.0, size)
+            writer.write(cv2.resize(fr, size, interpolation=cv2.INTER_AREA))
+    finally:
+        if writer is not None:
+            writer.release()
+    return path
+
+
 def _coach(rec: dict, hitter: dict, measured: dict | None, use_gemini: bool, *, template_reason: str = "disabled") -> None:
-    """Payload + report (Gemini or template) for an analyzed swing record."""
+    """Payload + report (Gemini or template) for an analyzed swing record. With Gemini and a video: the swing
+    clip is uploaded once; the AI coach first rates it blind (Explosiveness factor, before any numbers, so it
+    doesn't anchor on them), then writes the report from the numbers AND the video."""
+    import tempfile
+    from . import scoring
     from .coach import cues, gemini, payload
-    pl = payload.build(rec["analysis"], rec["features"], {"name": hitter.get("name", ""), "bats": hitter["bats"],
-                                                          "height_m": float(hitter["height_m"]),
-                                                          "level": hitter.get("level", "college")}, measured=measured)
-    rep, info = gemini.report(pl) if use_gemini else (cues.report(pl), {"source": "template", "reason": template_reason})
+    client = gemini._client() if use_gemini else None
+    fh, blind, tmp = None, None, None
+    if client is not None and rec.get("video"):
+        try:
+            tmp = tempfile.TemporaryDirectory(prefix="swinglab_clip_")
+            clip = swing_clip(rec, Path(tmp.name) / "swing")
+            fh = gemini.upload_video(client, clip) if clip else None
+        except Exception as e:
+            rec.setdefault("stages", {})["coach_video"] = {"ok": False, "error": f"{type(e).__name__}: {e}"[:300]}
+    try:
+        if fh is not None:
+            blind, binfo = gemini.blind_rating(fh, client=client)
+            rec.setdefault("stages", {})["coach_video"] = {"ok": blind is not None,
+                                                           **{k: v for k, v in binfo.items() if k in ("model", "reason", "seconds")}}
+            if blind is not None:
+                rec["blind_look"] = blind.model_dump()
+                scoring.with_ai_rating(rec["analysis"], blind.rating, blind.standout, binfo)
+        pl = payload.build(rec["analysis"], rec["features"], {"name": hitter.get("name", ""), "bats": hitter["bats"],
+                                                              "height_m": float(hitter["height_m"]),
+                                                              "level": hitter.get("level", "college")}, measured=measured)
+        if blind is not None:
+            pl["blind_look"] = {k: v for k, v in blind.model_dump().items() if k != "rating"}
+        rep, info = (gemini.report(pl, client=client, video=fh) if client is not None
+                     else (cues.report(pl), {"source": "template", "reason": template_reason if not use_gemini else "no GEMINI_API_KEY"}))
+    finally:
+        if fh is not None:
+            try:
+                client.files.delete(name=fh.name)
+            except Exception:
+                pass
+        if tmp is not None:
+            tmp.cleanup()
     rec.update(payload=pl, report=rep.model_dump(), report_source=info)
     rec.setdefault("stages", {})["coach"] = {"ok": True, **{k: v for k, v in info.items() if k in ("source", "reason", "seconds", "model")}}
 
