@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SwingLab Viewer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;1,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
 /* Layout follows potential_redesign_donotread.html, concept A: swings rail on the left, the swing (stage + stats)
    as a hero card, then coach, measurements and history cards; the coach chat is a drawer. */
@@ -35,6 +35,7 @@ h2{font:600 18px/1.2 var(--display);letter-spacing:.06em;text-transform:uppercas
 .topbar .in{display:flex;align-items:center;gap:12px;padding:10px 22px;flex-wrap:wrap}
 .brandlink{display:flex;align-items:center;gap:8px;color:#fff;text-decoration:none;background:none;border:0;cursor:pointer;padding:0}
 .brandlink span{font:700 22px/1 var(--display);letter-spacing:.06em;text-transform:uppercase}
+.brandlink em{font-style:italic;padding-right:.04em}
 .tb-btn{border:1px solid rgb(255 255 255 / .4);background:transparent;color:#fff;border-radius:6px;padding:6px 12px;font:500 14px var(--body);cursor:pointer}
 .tb-btn:hover{background:rgb(255 255 255 / .1)}
 .tb-btn.red{background:var(--red);border-color:var(--red)}
@@ -328,7 +329,7 @@ dialog h2{font:700 24px var(--display);letter-spacing:.04em}
 <body>
 <header class="topbar" id="topbar">
   <div class="in">
-    <button class="brandlink" id="brand" aria-label="SwingLab home"><svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M2 2h16v9l-8 7-8-7z" fill="#fff"/><path d="M2 2h16v3H2z" fill="#BF0D3E"/></svg><span>SwingLab</span></button>
+    <button class="brandlink" id="brand" aria-label="SwingLab home"><svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M2 2h16v9l-8 7-8-7z" fill="#fff"/><path d="M2 2h16v3H2z" fill="#BF0D3E"/></svg><span><em>Swing</em>Lab</span></button>
     <div class="hmenu" id="hmenuWrap" hidden>
       <button id="hmenuBtn" aria-haspopup="menu" aria-expanded="false" aria-label="Switch hitter"><span class="av" id="hmenuAv"></span><span id="hmenuName"></span><span aria-hidden="true" style="opacity:.7">&#9662;</span></button>
       <div class="menu" id="hmenu" role="menu" hidden></div>
