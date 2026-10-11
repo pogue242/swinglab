@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SwingLab redesign mockup (not part of the app)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        navy: { DEFAULT: "#0C2340", 700: "#1A3560", 50: "#EEF2F7" },
+        mlbred: { DEFAULT: "#BF0D3E", 50: "#FBEAEF" },
+        steel: { DEFAULT: "#4A7FB5", 100: "#DCE7F2" },
+        paper: "#F6F6F4",
+        line: "#E3E3E0",
+        muted: "#5C6670",
+      },
+      fontFamily: {
+        display: ['"Barlow Condensed"', '"Arial Narrow"', "sans-serif"],
+        sans: ['"IBM Plex Sans"', "system-ui", "sans-serif"],
+      },
+    },
+  },
+}
+</script>
+</head>
+<body class="bg-paper font-sans text-navy antialiased">
+
+<!-- ===================================================== HOME -->
+<section data-view="home" class="min-h-screen pb-24" hidden>
+  <header class="bg-navy text-white">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+      <a href="#home" class="js-brand flex items-center gap-2" aria-label="SwingLab home"></a>
+      <button class="rounded-md border border-white/40 px-4 py-2 text-sm font-medium hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white" aria-label="Upload a swing">Upload swing</button>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-6xl px-6 py-10">
+    <h1 class="font-display text-5xl font-bold uppercase tracking-wide">Choose a hitter</h1>
+    <p class="mt-1 text-muted">Pick up where you left off, or add someone new.</p>
+
+    <div id="hitter-grid" class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"></div>
+
+    <a href="#hitter" class="mt-8 inline-flex items-center gap-2 text-sm text-muted hover:text-navy">
+      <span class="font-medium">Reference:</span> Driveline lab swings · 4 swings <span aria-hidden="true">&rarr;</span>
+    </a>
+  </main>
+</section>
+
+<!-- ===================================================== HITTER PAGE (concept A) -->
+<section data-view="hitter" class="min-h-screen pb-24" hidden>
+  <header class="sticky top-0 z-30 bg-navy text-white">
+    <div class="flex items-center gap-4 px-6 py-3">
+      <a href="#home" class="js-brand flex items-center gap-2" aria-label="SwingLab home"></a>
+      <div class="relative">
+        <button id="hitter-menu-btn" class="flex items-center gap-2 rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white" aria-haspopup="menu" aria-expanded="false" aria-label="Switch hitter">
+          <span class="grid h-6 w-6 place-items-center rounded-full bg-white text-xs font-semibold text-navy">MT</span>
+          Matteo
+          <span aria-hidden="true" class="text-white/70">&#9662;</span>
+        </button>
+        <div id="hitter-menu" class="absolute left-0 mt-2 hidden w-56 overflow-hidden rounded-lg border border-line bg-white text-navy shadow-lg" role="menu">
+          <div id="hitter-menu-list"></div>
+          <div class="border-t border-line">
+            <button class="block w-full px-4 py-2 text-left text-sm hover:bg-paper" role="menuitem">Edit profile</button>
+            <button class="block w-full px-4 py-2 text-left text-sm text-mlbred hover:bg-mlbred-50" role="menuitem">Delete profile</button>
+            <a href="#home" class="block border-t border-line px-4 py-2 text-sm text-muted hover:bg-paper" role="menuitem">All hitters</a>
+          </div>
+        </div>
+      </div>
+      <div class="ml-auto flex items-center gap-2">
+        <button class="rounded-md border border-white/40 px-3 py-1.5 text-sm font-medium hover:bg-white/10" aria-label="Upload a swing">Upload</button>
+        <button id="coach-open" class="rounded-md bg-mlbred px-3 py-1.5 text-sm font-medium text-white hover:brightness-110" aria-label="Ask the coach">Ask coach</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="lg:grid lg:grid-cols-[220px_minmax(0,1fr)]">
+    <aside class="border-b border-line bg-white lg:sticky lg:top-[52px] lg:h-[calc(100vh-52px)] lg:overflow-y-auto lg:border-b-0 lg:border-r" aria-label="Swings">
+      <div class="flex items-baseline justify-between px-4 pb-2 pt-4">
+        <h2 class="font-display text-sm font-semibold uppercase tracking-widest text-muted">Swings</h2>
+        <span id="swing-count" class="text-xs text-muted"></span>
+      </div>
+      <ol id="swing-rail" class="flex gap-2 overflow-x-auto px-3 pb-3 lg:flex-col lg:gap-0 lg:overflow-visible lg:px-0"></ol>
+    </aside>
+
+    <main class="min-w-0 space-y-6 px-4 py-6 sm:px-6">
+      <!-- swing header -->
+      <div class="flex flex-wrap items-center gap-3">
+        <h1 class="font-display text-3xl font-bold uppercase tracking-wide" id="swing-date"></h1>
+        <span id="swing-mode" class="rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider"></span>
+        <span class="cursor-help rounded-full bg-paper px-2 py-0.5 text-xs text-muted ring-1 ring-line" title="Arms estimated without depth in 6 frames. Framing is a little tight.">2 data notes</span>
+      </div>
+
+      <!-- hero: player + stat panel -->
+      <div class="grid overflow-hidden rounded-xl border border-line bg-white xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+        <div class="min-w-0">
+          <div class="relative">
+            <div id="stage" class="aspect-[4/3] w-full"></div>
+            <div class="absolute left-3 top-3 flex rounded-md bg-white/90 p-0.5 text-xs font-medium shadow-sm ring-1 ring-line" role="group" aria-label="Replay view">
+              <button class="js-stage-mode rounded px-3 py-1" data-mode="video" aria-pressed="true">Video</button>
+              <button class="js-stage-mode rounded px-3 py-1" data-mode="3d" aria-pressed="false">3D</button>
+            </div>
+            <span class="absolute right-3 top-3 rounded-md bg-white/90 px-2 py-1 font-display text-sm font-semibold uppercase tracking-wider text-mlbred shadow-sm ring-1 ring-line">Contact</span>
+          </div>
+          <div class="border-t border-line px-4 py-3">
+            <div class="flex items-center gap-3">
+              <button class="grid h-9 w-9 place-items-center rounded-full bg-navy text-white hover:bg-navy-700" aria-label="Play">
+                <svg viewBox="0 0 12 12" class="h-3 w-3 fill-current" aria-hidden="true"><path d="M2 1l9 5-9 5z"/></svg>
+              </button>
+              <button class="rounded border border-line px-2 py-1 text-xs font-medium" aria-label="Playback speed one quarter">¼×</button>
+              <div class="relative mx-2 flex-1">
+                <div class="h-1.5 rounded-full bg-line"></div>
+                <div class="absolute inset-y-0 left-0 h-1.5 w-[78%] rounded-full bg-navy"></div>
+                <div class="absolute -top-[5px] left-[78%] h-4 w-4 -translate-x-1/2 rounded-full border-2 border-white bg-mlbred shadow" role="slider" tabindex="0" aria-label="Swing time" aria-valuenow="78" aria-valuemin="0" aria-valuemax="100"></div>
+                <div class="relative mt-2 h-4 text-[11px] text-muted">
+                  <span class="absolute left-[20%] -translate-x-1/2">Load</span>
+                  <span class="absolute left-[58%] -translate-x-1/2">Foot plant</span>
+                  <span class="absolute left-[78%] -translate-x-1/2 font-semibold text-mlbred">Contact</span>
+                </div>
+              </div>
+              <span class="whitespace-nowrap text-xs tabular-nums text-muted">0.000 s</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="min-w-0 border-t border-line p-6 xl:border-l xl:border-t-0">
+          <div class="flex items-end justify-between gap-4">
+            <div>
+              <div class="text-xs font-semibold uppercase tracking-widest text-muted">Overall</div>
+              <div id="stat-overall" class="font-display text-7xl font-bold leading-none tabular-nums"></div>
+            </div>
+            <dl class="grid grid-cols-3 gap-x-5 text-right">
+              <div><dt class="text-xs text-muted">Form</dt><dd id="stat-form" class="font-display text-3xl font-semibold tabular-nums"></dd></div>
+              <div><dt class="text-xs text-muted">Contact</dt><dd id="stat-contact" class="font-display text-3xl font-semibold tabular-nums"></dd></div>
+              <div><dt class="text-xs text-muted">Bat mph</dt><dd id="stat-bat" class="font-display text-3xl font-semibold tabular-nums"></dd></div>
+            </dl>
+          </div>
+
+          <div class="mt-6 border-t border-line pt-4">
+            <div class="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 class="font-display text-lg font-semibold uppercase tracking-wider">Kinematic sequence</h2>
+              <div class="js-seq-legend flex gap-3 text-[11px] text-muted"></div>
+            </div>
+            <svg class="js-seq mt-2 w-full" viewBox="0 0 360 170" role="img" aria-label="Hip, chest and hand speed through the swing"></svg>
+          </div>
+
+          <table class="mt-4 w-full text-sm">
+            <thead>
+              <tr class="border-b border-line text-left text-[11px] uppercase tracking-wider text-muted">
+                <th class="py-2 font-semibold">Phase</th>
+                <th class="py-2 text-right font-semibold">Hips °/s</th>
+                <th class="py-2 text-right font-semibold">Chest °/s</th>
+                <th class="py-2 text-right font-semibold">Hands m/s</th>
+                <th class="py-2 text-right font-semibold">Timing</th>
+              </tr>
+            </thead>
+            <tbody id="phase-table" class="tabular-nums"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- coach -->
+      <section class="rounded-xl border border-line border-l-4 border-l-mlbred bg-white p-6" aria-labelledby="coach-headline">
+        <div class="text-xs font-semibold uppercase tracking-widest text-muted">Coach</div>
+        <h2 id="coach-headline" class="mt-1 font-display text-3xl font-bold"></h2>
+        <p class="mt-2 max-w-prose font-medium">“Feel your belt buckle turn to the pitcher before your chest opens.”</p>
+        <p class="mt-3 text-sm"><span class="font-semibold">Drill:</span> Step-behind tee swings <span class="text-muted">· 3 × 8</span></p>
+        <details class="group mt-4">
+          <summary class="inline-flex cursor-pointer list-none items-center gap-1 rounded-md border border-line px-3 py-1.5 text-sm font-medium hover:border-navy">
+            <span class="group-open:hidden">Show full report</span><span class="hidden group-open:inline">Hide full report</span>
+          </summary>
+          <div class="mt-4 grid gap-6 text-sm md:grid-cols-2">
+            <div>
+              <h3 class="font-semibold">What happened</h3>
+              <p class="mt-1 text-muted">Your chest hit top speed only 42 ms after your hips, so the hips didn't get a head start. Most fast-bat hitters leave 50–70 ms.</p>
+              <h3 class="mt-4 font-semibold">Why it matters</h3>
+              <p class="mt-1 text-muted">That gap is where bat speed is built. A little more separation is worth roughly 2–3 mph for your size.</p>
+            </div>
+            <div>
+              <h3 class="font-semibold">Training plan</h3>
+              <ul class="mt-2 space-y-3">
+                <li><span class="font-medium">Step-behind tee swings</span> <span class="text-muted">· 3 × 8</span></li>
+                <li><span class="font-medium">Hip-lead med-ball throws</span> <span class="text-muted">· 3 × 6 each side</span></li>
+                <li><span class="font-medium">Half-turn holds</span> <span class="text-muted">· 2 × 10 s</span></li>
+              </ul>
+              <p class="mt-3 text-xs text-muted">Written by Gemini from this swing's measurements.</p>
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <!-- measurements -->
+      <section class="rounded-xl border border-line bg-white p-6" aria-labelledby="meas-title">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h2 id="meas-title" class="font-display text-lg font-semibold uppercase tracking-wider">Measurements</h2>
+          <div class="flex rounded-md bg-paper p-0.5 text-sm ring-1 ring-line" role="tablist" aria-label="Measurement group">
+            <button class="js-meas-tab rounded px-3 py-1" role="tab" data-group="power">Power</button>
+            <button class="js-meas-tab rounded px-3 py-1" role="tab" data-group="sequencing">Sequencing</button>
+            <button class="js-meas-tab rounded px-3 py-1" role="tab" data-group="posture">Posture</button>
+          </div>
+        </div>
+        <p class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
+          <span class="inline-flex items-center gap-1.5"><i class="inline-block h-2 w-5 rounded-sm bg-line"></i>middle 80% of lab hitters</span>
+          <span class="inline-flex items-center gap-1.5"><i class="inline-block h-2 w-5 rounded-sm bg-steel/40"></i>fastest bats</span>
+          <span class="inline-flex items-center gap-1.5"><i class="inline-block h-3 w-1 rounded-sm bg-navy"></i>you</span>
+        </p>
+        <div id="meas-rows" class="mt-4 divide-y divide-line" role="tabpanel"></div>
+      </section>
+
+      <!-- history -->
+      <section class="rounded-xl border border-line bg-white p-6" aria-labelledby="hist-title">
+        <h2 id="hist-title" class="font-display text-lg font-semibold uppercase tracking-wider">History</h2>
+        <dl id="hist-tiles" class="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4"></dl>
+        <div class="mt-6 grid gap-6 md:grid-cols-2">
+          <figure>
+            <figcaption class="text-xs font-semibold uppercase tracking-widest text-muted">Overall score</figcaption>
+            <svg id="hist-overall" class="mt-2 w-full" viewBox="0 0 360 140" role="img" aria-label="Overall score per swing"></svg>
+          </figure>
+          <figure>
+            <figcaption class="text-xs font-semibold uppercase tracking-widest text-muted">Bat speed (mph)</figcaption>
+            <svg id="hist-bat" class="mt-2 w-full" viewBox="0 0 360 140" role="img" aria-label="Bat speed per swing"></svg>
+          </figure>
+        </div>
+        <div class="mt-6 overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-line text-left text-[11px] uppercase tracking-wider text-muted">
+                <th class="py-2 font-semibold">Date</th><th class="py-2 font-semibold">Type</th>
+                <th class="py-2 text-right font-semibold">Overall</th><th class="py-2 text-right font-semibold">Form</th>
+                <th class="py-2 text-right font-semibold">Contact</th><th class="py-2 text-right font-semibold">Bat mph</th>
+                <th class="py-2 pl-4 font-semibold">Coach</th>
+              </tr>
+            </thead>
+            <tbody id="hist-table" class="tabular-nums"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <footer class="pt-2 text-center text-xs text-muted">
+        <a href="#hitter" class="hover:text-navy">System status</a>
+      </footer>
+    </main>
+  </div>
+
+  <!-- coach drawer -->
+  <div id="coach-backdrop" class="fixed inset-0 z-40 hidden bg-navy/30"></div>
+  <aside id="coach-drawer" class="fixed inset-y-0 right-0 z-50 flex w-full max-w-md translate-x-full flex-col bg-white shadow-2xl transition-transform duration-200" aria-label="Ask the coach" aria-hidden="true">
+    <div class="flex items-center justify-between border-b border-line px-5 py-4">
+      <h2 class="font-display text-xl font-bold uppercase tracking-wide">Ask the coach</h2>
+      <button id="coach-close" class="rounded p-1 text-muted hover:text-navy" aria-label="Close">&times;</button>
+    </div>
+    <div class="flex-1 space-y-4 overflow-y-auto px-5 py-4 text-sm">
+      <p class="ml-auto max-w-[85%] rounded-lg bg-navy px-3 py-2 text-white">What should I feel in my hips?</p>
+      <p class="max-w-[85%] rounded-lg bg-paper px-3 py-2 ring-1 ring-line">Your back hip should drive toward the pitcher right as your front foot lands. Your hips turned at 612 °/s, which is good. The chest just followed too quickly, so think "hips, wait, then chest."</p>
+    </div>
+    <form class="flex gap-2 border-t border-line p-4" onsubmit="return false">
+      <label class="sr-only" for="coach-q">Question for the coach</label>
+      <input id="coach-q" class="min-w-0 flex-1 rounded-md border border-line px-3 py-2 text-sm focus:border-navy focus:outline-none" placeholder="Ask about this swing">
+      <button class="rounded-md bg-navy px-4 py-2 text-sm font-medium text-white">Ask</button>
+    </form>
+    <p class="px-4 pb-4 text-[11px] text-muted">Answers use this swing's measurements only.</p>
+  </aside>
+</section>
+
+<!-- ===================================================== VIDEO OVERLAY PROPOSAL -->
+<section data-view="overlay" class="min-h-screen pb-24" hidden>
+  <header class="bg-navy text-white">
+    <div class="mx-auto flex max-w-6xl items-center px-6 py-4"><a href="#home" class="js-brand flex items-center gap-2" aria-label="SwingLab home"></a></div>
+  </header>
+  <main class="mx-auto max-w-6xl space-y-10 px-6 py-10">
+    <div>
+      <h1 class="font-display text-4xl font-bold uppercase tracking-wide">Annotated video, proposed look</h1>
+      <p class="mt-1 text-muted">A white panel, four live numbers, and phase bands on the chart. Red is used only for the phase and the playhead.</p>
+    </div>
+
+    <figure>
+      <figcaption class="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">During the swing</figcaption>
+      <div class="grid aspect-[16/9] grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] overflow-hidden rounded-xl border border-line bg-white shadow-sm">
+        <div id="overlay-stage" class="h-full"></div>
+        <div class="flex flex-col border-l border-line p-6">
+          <div class="js-brand-dark flex items-center gap-2"></div>
+          <div class="mt-5 font-display text-2xl font-bold uppercase tracking-wide text-mlbred">Foot plant &rarr; contact</div>
+          <div class="text-xs tabular-nums text-muted">−0.046 s from contact</div>
+          <dl class="mt-5 grid grid-cols-2 gap-x-4 gap-y-4">
+            <div><dt class="flex items-center gap-1.5 text-xs text-muted"><i class="inline-block h-2 w-2 rounded-sm bg-navy"></i>Hips</dt><dd class="font-display text-3xl font-semibold tabular-nums">612 <span class="text-sm font-normal text-muted">°/s</span></dd></div>
+            <div><dt class="flex items-center gap-1.5 text-xs text-muted"><i class="inline-block h-2 w-2 rounded-sm bg-steel"></i>Chest</dt><dd class="font-display text-3xl font-semibold tabular-nums">845 <span class="text-sm font-normal text-muted">°/s</span></dd></div>
+            <div><dt class="text-xs text-muted">Separation</dt><dd class="font-display text-3xl font-semibold tabular-nums">38<span class="text-sm font-normal text-muted">°</span></dd></div>
+            <div><dt class="flex items-center gap-1.5 text-xs text-muted"><i class="inline-block h-0.5 w-3 bg-[#8A94A0]"></i>Hands</dt><dd class="font-display text-3xl font-semibold tabular-nums">7.9 <span class="text-sm font-normal text-muted">m/s</span></dd></div>
+          </dl>
+          <svg class="js-seq js-seq-compact mt-auto w-full" viewBox="0 0 360 170" role="img" aria-label="Kinematic sequence"></svg>
+        </div>
+      </div>
+    </figure>
+
+    <figure>
+      <figcaption class="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">End card</figcaption>
+      <div class="grid aspect-[16/9] grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] overflow-hidden rounded-xl border border-line bg-white shadow-sm">
+        <div id="overlay-end-stage" class="h-full"></div>
+        <div class="flex flex-col border-l border-line p-6">
+          <div class="js-brand-dark flex items-center gap-2"></div>
+          <div class="mt-5 text-xs font-semibold uppercase tracking-widest text-muted">Result</div>
+          <div class="font-display text-7xl font-bold leading-none tabular-nums">72</div>
+          <div class="mt-1 text-xs text-muted">overall · form + ball contact</div>
+          <div id="end-bars" class="mt-6 space-y-3"></div>
+          <div class="mt-auto grid grid-cols-2 gap-4 border-t border-line pt-4">
+            <div><div class="text-xs text-muted">Bat speed</div><div class="font-display text-2xl font-semibold tabular-nums">68.4 <span class="text-sm font-normal text-muted">mph</span></div></div>
+            <div><div class="text-xs text-muted">Exit speed</div><div class="font-display text-2xl font-semibold tabular-nums">81.2 <span class="text-sm font-normal text-muted">mph</span></div></div>
+          </div>
+        </div>
+      </div>
+    </figure>
+  </main>
+</section>
+
+<!-- ===================================================== CONCEPT B: SCOUTING REPORT -->
+<section data-view="conceptb" class="min-h-screen pb-24" hidden>
+  <header class="bg-navy text-white">
+    <div class="mx-auto max-w-6xl px-6 pb-6 pt-4">
+      <div class="flex items-center justify-between">
+        <a href="#home" class="js-brand flex items-center gap-2" aria-label="SwingLab home"></a>
+        <span class="text-xs uppercase tracking-widest text-white/60">Concept B · scouting report</span>
+      </div>
+      <div class="mt-6 flex flex-wrap items-end justify-between gap-6">
+        <div>
+          <div class="text-xs uppercase tracking-widest text-white/60">Bats R · College · 6'0" · 9 swings</div>
+          <h1 class="font-display text-6xl font-bold uppercase leading-none tracking-wide">Matteo</h1>
+          <div class="mt-3 h-1 w-16 bg-mlbred"></div>
+        </div>
+        <dl class="grid grid-cols-4 divide-x divide-white/15 text-center">
+          <div class="px-5"><dt class="text-[11px] uppercase tracking-widest text-white/60">OVR</dt><dd class="font-display text-4xl font-bold tabular-nums">72</dd></div>
+          <div class="px-5"><dt class="text-[11px] uppercase tracking-widest text-white/60">Form</dt><dd class="font-display text-4xl font-bold tabular-nums">70</dd></div>
+          <div class="px-5"><dt class="text-[11px] uppercase tracking-widest text-white/60">Cont</dt><dd class="font-display text-4xl font-bold tabular-nums">76</dd></div>
+          <div class="px-5"><dt class="text-[11px] uppercase tracking-widest text-white/60">Bat</dt><dd class="font-display text-4xl font-bold tabular-nums">68.4</dd></div>
+        </dl>
+      </div>
+    </div>
+  </header>
+  <div class="border-b border-line bg-white">
+    <div id="b-chips" class="mx-auto flex max-w-6xl gap-2 overflow-x-auto px-6 py-3"></div>
+  </div>
+  <main class="mx-auto grid max-w-6xl gap-4 px-6 py-6 md:grid-cols-2">
+    <div class="overflow-hidden rounded-xl border border-line bg-white">
+      <div class="border-b border-line px-5 py-3 font-display text-sm font-semibold uppercase tracking-widest text-muted">Video</div>
+      <div id="b-stage" class="aspect-[4/3]"></div>
+    </div>
+    <div class="rounded-xl border border-line bg-white p-5">
+      <div class="font-display text-sm font-semibold uppercase tracking-widest text-muted">Scores</div>
+      <div id="b-bars" class="mt-4 space-y-3"></div>
+    </div>
+    <div class="rounded-xl border border-line bg-white p-5">
+      <div class="flex items-baseline justify-between">
+        <div class="font-display text-sm font-semibold uppercase tracking-widest text-muted">Sequence</div>
+        <div class="js-seq-legend flex gap-3 text-[11px] text-muted"></div>
+      </div>
+      <svg class="js-seq mt-2 w-full" viewBox="0 0 360 170" role="img" aria-label="Kinematic sequence"></svg>
+    </div>
+    <div class="rounded-xl border border-line border-t-4 border-t-mlbred bg-white p-5">
+      <div class="font-display text-sm font-semibold uppercase tracking-widest text-muted">Coach</div>
+      <h2 class="mt-1 font-display text-2xl font-bold">Let the hips lead, then the chest</h2>
+      <p class="mt-2 text-sm">“Feel your belt buckle turn to the pitcher before your chest opens.”</p>
+      <p class="mt-3 text-sm"><span class="font-semibold">Drill:</span> Step-behind tee swings <span class="text-muted">· 3 × 8</span></p>
+    </div>
+  </main>
+</section>
+
+<!-- ===================================================== new hitter dialog -->
+<dialog id="new-hitter" class="w-[calc(100%-2rem)] max-w-md rounded-xl border border-line p-0 text-navy backdrop:bg-navy/40">
+  <form method="dialog" class="p-6">
+    <h2 class="font-display text-2xl font-bold uppercase tracking-wide">New hitter</h2>
+    <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
+      <label class="col-span-2 flex flex-col gap-1 text-muted">Name<input class="rounded-md border border-line px-3 py-2 text-navy focus:border-navy focus:outline-none" required></label>
+      <label class="flex flex-col gap-1 text-muted">Bats<select class="rounded-md border border-line px-3 py-2 text-navy"><option>Right</option><option>Left</option></select></label>
+      <label class="flex flex-col gap-1 text-muted">Level<select class="rounded-md border border-line px-3 py-2 text-navy"><option>High school</option><option selected>College</option><option>Independent</option><option>Minor league</option></select></label>
+      <label class="flex flex-col gap-1 text-muted">Height (cm)<input type="number" class="rounded-md border border-line px-3 py-2 text-navy"></label>
+      <label class="flex flex-col gap-1 text-muted">Weight (kg)<input type="number" class="rounded-md border border-line px-3 py-2 text-navy"></label>
+    </div>
+    <p class="mt-3 text-xs text-muted">Size and level adjust the scores.</p>
+    <div class="mt-5 flex justify-end gap-2">
+      <button value="cancel" class="rounded-md border border-line px-4 py-2 text-sm">Cancel</button>
+      <button value="save" class="rounded-md bg-mlbred px-4 py-2 text-sm font-medium text-white">Create</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ===================================================== mockup navigation -->
+<nav class="fixed bottom-4 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-1 rounded-full border border-line bg-white px-2 py-1 text-sm shadow-lg" aria-label="Mockup screens">
+  <span class="px-2 text-[11px] font-semibold uppercase tracking-widest text-muted">Mockup</span>
+  <a href="#home" class="js-nav rounded-full px-3 py-1">Home</a>
+  <a href="#hitter" class="js-nav rounded-full px-3 py-1">Hitter page</a>
+  <a href="#overlay" class="js-nav rounded-full px-3 py-1">Video overlay</a>
+  <a href="#conceptb" class="js-nav rounded-full px-3 py-1">Concept B</a>
+</nav>
+
+<script>
+/* ---------- sample data (shaped like userdata/swings/*.json, values invented) ---------- */
+const HITTERS = [
+  { id: "matteo", name: "Matteo", initials: "MT", bats: "R", level: "College", swings: 9, latest: 72, trend: [58, 61, 60, 64, 66, 63, 68, 70, 72], isLastOpened: true },
+  { id: "wilson", name: "Wilson", initials: "WI", bats: "L", level: "High school", swings: 6, latest: 64, trend: [55, 59, 57, 62, 60, 64], isLastOpened: false },
+]
+
+const SWINGS = [
+  { date: "Oct 9", time: "10:17 PM", mode: "hit", overall: 72, form: 70, contact: 76, bat: 68.4, headline: "Let the hips lead, then the chest" },
+  { date: "Oct 9", time: "10:12 PM", mode: "dry", overall: 70, form: 70, contact: null, bat: 67.9, headline: "Good stride, chest a hair early" },
+  { date: "Oct 7", time: "6:40 PM", mode: "hit", overall: 68, form: 66, contact: 71, bat: 67.1, headline: "Keep the head still through contact" },
+  { date: "Oct 7", time: "6:31 PM", mode: "hit", overall: 63, form: 65, contact: 60, bat: 66.5, headline: "Hands are dragging behind the chest" },
+  { date: "Oct 5", time: "5:02 PM", mode: "dry", overall: 66, form: 66, contact: null, bat: 66.8, headline: "Better hip lead this time" },
+  { date: "Oct 5", time: "4:55 PM", mode: "hit", overall: 64, form: 62, contact: 67, bat: 65.9, headline: "Stride is landing open" },
+  { date: "Oct 3", time: "7:20 PM", mode: "dry", overall: 60, form: 60, contact: null, bat: 65.2, headline: "Load deeper into the back hip" },
+  { date: "Oct 3", time: "7:14 PM", mode: "hit", overall: 61, form: 59, contact: 64, bat: 64.8, headline: "Chest opens with the hips" },
+  { date: "Oct 1", time: "4:30 PM", mode: "dry", overall: 58, form: 58, contact: null, bat: 64.1, headline: "Stand a little taller at load" },
+]
+
+const PHASES = [
+  { phase: "Load", hips: 85, chest: 60, hands: 1.2, timing: "ok" },
+  { phase: "Foot plant", hips: 540, chest: 410, hands: 3.4, timing: "ok" },
+  { phase: "Peak", hips: 612, chest: 845, hands: 7.9, timing: "late" },
+  { phase: "Contact", hips: 380, chest: 610, hands: 7.6, timing: "ok" },
+]
+
+const MEASUREMENTS = {
+  power: [
+    { label: "Hip rotation speed", value: "612 °/s", pos: 62, band: [55, 82], help: "Peak hip turn speed between foot plant and contact." },
+    { label: "Chest rotation speed", value: "845 °/s", pos: 58, band: [60, 86], help: "Peak chest turn speed." },
+    { label: "Hand speed at contact", value: "7.9 m/s", pos: 48, band: [60, 88], help: "How fast the hands move as the bat meets the ball." },
+    { label: "Stride length", value: "78% ht", pos: 70, band: [45, 75], help: "Distance the front foot travels, as a share of height." },
+  ],
+  sequencing: [
+    { label: "Hip–shoulder separation", value: "38°", pos: 66, band: [55, 80], help: "How far the hips turn ahead of the shoulders, measured in 3D." },
+    { label: "Chest peak after hips", value: "42 ms", pos: 34, band: [48, 72], help: "Time between hip and chest top speed. 50–70 ms is typical for fast bats.", isFocus: true },
+    { label: "Hands peak after chest", value: "18 ms", pos: 40, band: [42, 70], help: "Time between chest and hand top speed." },
+  ],
+  posture: [
+    { label: "Lead knee at contact", value: "152°", pos: 55, band: [45, 70], help: "Front-knee angle when the bat meets the ball." },
+    { label: "Spine tilt at contact", value: "28°", pos: 50, band: [40, 66], help: "Lean of the upper body toward the plate." },
+    { label: "Head movement", value: "6% ht", pos: 94, band: [10, 40], help: "How far the head travels from load to contact. Less is better." },
+  ],
+}
+
+const COLORS = { navy: "#0C2340", red: "#BF0D3E", steel: "#4A7FB5", line: "#E3E3E0", muted: "#5C6670", hands: "#8A94A0" }
+
+/* ---------- helpers ---------- */
+const $ = (selector, root = document) => root.querySelector(selector)
+const $$ = (selector, root = document) => [...root.querySelectorAll(selector)]
+
+const brandMarkup = ({ isOnDark }) => `
+  <svg viewBox="0 0 20 20" class="h-5 w-5" aria-hidden="true"><path d="M2 2h16v9l-8 7-8-7z" fill="${isOnDark ? "#FFFFFF" : COLORS.navy}"/><path d="M2 2h16v3H2z" fill="${COLORS.red}"/></svg>
+  <span class="font-display text-xl font-bold uppercase tracking-wider ${isOnDark ? "text-white" : "text-navy"}">SwingLab</span>`
+
+const modeChipClasses = (mode) => mode === "hit" ? "border-mlbred text-mlbred" : "border-steel text-steel"
+
+/* ---------- skeleton figure (shared by every stage) ---------- */
+const JOINTS = {
+  head: [200, 56], neck: [200, 80], ls: [226, 92], rs: [178, 90], le: [248, 120], re: [172, 122],
+  lw: [236, 134], rw: [226, 132], lh: [214, 166], rh: [188, 164], lk: [240, 206], rk: [176, 210], la: [254, 252], ra: [160, 252],
+}
+const BONES = [["neck", "ls"], ["neck", "rs"], ["ls", "le"], ["le", "lw"], ["rs", "re"], ["re", "rw"], ["ls", "lh"], ["rs", "rh"], ["lh", "lk"], ["lk", "la"], ["rh", "rk"], ["rk", "ra"]]
+
+const extendedLine = (a, b, factor) => {
+  const [ax, ay] = JOINTS[a]
+  const [bx, by] = JOINTS[b]
+  const mx = (ax + bx) / 2, my = (ay + by) / 2, dx = bx - ax, dy = by - ay
+  return { x1: mx - factor * dx, y1: my - factor * dy, x2: mx + factor * dx, y2: my + factor * dy }
+}
+
+const backgroundMarkup = ({ isThreeD }) => {
+  if (isThreeD) {
+    const grid = Array.from({ length: 9 }, (_, i) => {
+      const x = 40 + i * 40
+      return `<line x1="${200 + (x - 200) * 0.45}" y1="236" x2="${x}" y2="290" stroke="${COLORS.line}"/>`
+    }).join("")
+    const rows = [236, 248, 262, 276, 290].map((y) => `<line x1="20" y1="${y}" x2="380" y2="${y}" stroke="${COLORS.line}"/>`).join("")
+    return `<rect width="400" height="300" fill="#FAFAF8"/>${grid}${rows}<path d="M196 270h22v8l-11 7-11-7z" fill="#FFFFFF" stroke="${COLORS.line}"/>`
+  }
+  const net = Array.from({ length: 12 }, (_, i) => `<line x1="${i * 36}" y1="0" x2="${i * 36}" y2="255" stroke="#D3D5CF"/>`).join("")
+  return `<rect width="400" height="300" fill="#E4E5E0"/>${net}<rect y="255" width="400" height="45" fill="#CFD2C9"/>`
+}
+
+const skeletonSvg = ({ isThreeD = false, hasLabel = true, isDimmed = false } = {}) => {
+  const P = JOINTS
+  const bones = BONES.map(([a, b]) => `<line x1="${P[a][0]}" y1="${P[a][1]}" x2="${P[b][0]}" y2="${P[b][1]}"/>`).join("")
+  const hip = extendedLine("rh", "lh", 0.9)
+  const shoulder = extendedLine("rs", "ls", 0.9)
+  const joints = Object.entries(P).filter(([k]) => k !== "head").map(([, [x, y]]) => `<circle cx="${x}" cy="${y}" r="3.6"/>`).join("")
+  const label = hasLabel ? `<g><rect x="262" y="142" width="96" height="22" rx="4" fill="${COLORS.navy}"/><text x="310" y="157" text-anchor="middle" font-size="12" font-weight="600" fill="#FFFFFF" font-family="IBM Plex Sans, sans-serif">38° separation</text></g>` : ""
+  return `<svg viewBox="0 0 400 300" class="h-full w-full" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Hitter skeleton at contact">
+    ${backgroundMarkup({ isThreeD })}
+    <g opacity="${isDimmed ? 0.3 : 1}">
+      <line x1="231" y1="133" x2="322" y2="88" stroke="#6E5A3A" stroke-width="5" stroke-linecap="round"/>
+      <circle cx="330" cy="86" r="5" fill="#FFFFFF" stroke="${COLORS.red}" stroke-width="1.5"/>
+      <line x1="${hip.x1}" y1="${hip.y1}" x2="${hip.x2}" y2="${hip.y2}" stroke="${COLORS.steel}" stroke-width="4" stroke-linecap="round"/>
+      <line x1="${shoulder.x1}" y1="${shoulder.y1}" x2="${shoulder.x2}" y2="${shoulder.y2}" stroke="${COLORS.red}" stroke-width="4" stroke-linecap="round"/>
+      <g stroke="#FFFFFF" stroke-width="7" stroke-linecap="round">${bones}</g>
+      <g stroke="${COLORS.navy}" stroke-width="3.5" stroke-linecap="round">${bones}</g>
+      <circle cx="${P.head[0]}" cy="${P.head[1]}" r="13" fill="#FFFFFF" fill-opacity="0.6" stroke="${COLORS.navy}" stroke-width="3"/>
+      <g fill="#FFFFFF" stroke="${COLORS.navy}" stroke-width="1.8">${joints}</g>
+      <circle cx="${P.lh[0]}" cy="${P.lh[1]}" r="15" fill="none" stroke="${COLORS.red}" stroke-width="2" stroke-dasharray="4 3"/>
+      ${label}
+    </g>
+  </svg>`
+}
+
+/* ---------- charts ---------- */
+const bumpPoints = ({ peakX, height, width, x0 = 24, x1 = 344, floorY = 140, plotH = 112 }) => {
+  const points = []
+  for (let x = x0; x <= x1; x += 4) {
+    const y = floorY - height * plotH * Math.exp(-(((x - peakX) / width) ** 2))
+    points.push(`${x},${y.toFixed(1)}`)
+  }
+  return points.join(" ")
+}
+
+const SERIES = [
+  { key: "hips", label: "Hips", color: COLORS.navy, peakX: 226, height: 0.62, width: 48, dash: "" },
+  { key: "chest", label: "Chest", color: COLORS.steel, peakX: 252, height: 0.86, width: 40, dash: "" },
+  { key: "hands", label: "Hands", color: COLORS.hands, peakX: 276, height: 0.96, width: 30, dash: "5 3" },
+]
+
+const renderSequenceChart = (svg) => {
+  const isCompact = svg.classList.contains("js-seq-compact")
+  const floorY = 140
+  const bands = `
+    <rect x="58" y="22" width="138" height="118" fill="#F3F4F1"/>
+    <rect x="196" y="22" width="84" height="118" fill="${COLORS.steel}" fill-opacity="0.08"/>
+    <line x1="280" y1="22" x2="280" y2="140" stroke="${COLORS.red}" stroke-width="1.5"/>
+    <line x1="24" y1="${floorY}" x2="344" y2="${floorY}" stroke="${COLORS.line}"/>`
+  const labels = `
+    <g font-size="10" fill="${COLORS.muted}" font-family="IBM Plex Sans, sans-serif" text-anchor="middle">
+      <text x="127" y="16">Load → stride</text>
+      <text x="238" y="16">Plant → contact</text>
+      <text x="58" y="156">Load</text><text x="196" y="156">Foot plant</text>
+      <text x="280" y="156" fill="${COLORS.red}" font-weight="600">Contact</text>
+    </g>`
+  const lines = SERIES.map((s) => `<polyline fill="none" stroke="${s.color}" stroke-width="2.2" stroke-dasharray="${s.dash}" points="${bumpPoints({ ...s, floorY })}"/>`).join("")
+  const peaks = SERIES.map((s) => `<circle cx="${s.peakX}" cy="${floorY - s.height * 112}" r="3.5" fill="${s.color}" stroke="#FFFFFF" stroke-width="1.5"/>`).join("")
+  const playhead = isCompact ? `<line x1="262" y1="22" x2="262" y2="140" stroke="${COLORS.navy}" stroke-width="1" stroke-dasharray="2 2"/>` : ""
+  svg.innerHTML = bands + labels + lines + peaks + playhead
+}
+
+const renderSequenceLegend = (el) => {
+  el.innerHTML = SERIES.map((s) => `<span class="inline-flex items-center gap-1"><i class="inline-block h-0.5 w-3" style="background:${s.color}"></i>${s.label}</span>`).join("")
+}
+
+const renderLineChart = (svg, values, { min, max, unit = "" }) => {
+  const W = 360, H = 140, L = 28, R = 10, T = 10, B = 22
+  const X = (i) => L + (values.length <= 1 ? 0.5 : i / (values.length - 1)) * (W - L - R)
+  const Y = (v) => T + (1 - (v - min) / (max - min)) * (H - T - B)
+  const grid = [0, 0.5, 1].map((f) => {
+    const v = min + (max - min) * f
+    return `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="${COLORS.line}"/><text x="${L - 6}" y="${Y(v) + 3}" text-anchor="end" font-size="10" fill="${COLORS.muted}">${Math.round(v)}</text>`
+  }).join("")
+  const valid = values.map((v, i) => v == null ? null : [X(i), Y(v)]).filter(Boolean)
+  const line = `<polyline fill="none" stroke="${COLORS.navy}" stroke-width="2" points="${valid.map((p) => p.join(",")).join(" ")}"/>`
+  const dots = values.map((v, i) => {
+    if (v == null) return ""
+    const isLast = i === values.length - 1
+    return `<circle cx="${X(i)}" cy="${Y(v)}" r="${isLast ? 4.5 : 3}" fill="${isLast ? COLORS.red : COLORS.navy}" stroke="#FFFFFF" stroke-width="1.5"><title>Swing ${i + 1}: ${v}${unit}</title></circle>`
+  }).join("")
+  svg.innerHTML = grid + line + dots
+}
+
+const sparklineSvg = (values) => {
+  const W = 120, H = 32
+  const min = Math.min(...values) - 2, max = Math.max(...values) + 2
+  const pts = values.map((v, i) => `${(i / (values.length - 1)) * W},${H - ((v - min) / (max - min)) * H}`)
+  const [lx, ly] = pts.at(-1).split(",")
+  return `<svg viewBox="-4 -4 ${W + 8} ${H + 8}" class="h-8 w-28" aria-hidden="true"><polyline fill="none" stroke="${COLORS.navy}" stroke-width="2" points="${pts.join(" ")}"/><circle cx="${lx}" cy="${ly}" r="3" fill="${COLORS.red}"/></svg>`
+}
+
+const scoreBarsMarkup = (rows) => rows.map(({ label, value, isMain }) => `
+  <div class="grid grid-cols-[96px_minmax(0,1fr)_32px] items-center gap-3">
+    <span class="${isMain ? "font-semibold" : "pl-3 text-sm text-muted"}">${label}</span>
+    <span class="h-2 overflow-hidden rounded-full bg-line"><i class="block h-full rounded-full bg-navy" style="width:${value}%"></i></span>
+    <span class="text-right font-display text-lg font-semibold tabular-nums">${value}</span>
+  </div>`).join("")
+
+/* ---------- home ---------- */
+const renderHome = () => {
+  const cards = HITTERS.map((h) => `
+    <a href="#hitter" class="group flex flex-col rounded-xl border border-line bg-white p-5 transition hover:border-navy hover:shadow-sm ${h.isLastOpened ? "border-t-4 border-t-mlbred" : ""}" aria-label="Open ${h.name}">
+      <div class="flex items-center gap-3">
+        <span class="grid h-10 w-10 place-items-center rounded-full bg-navy-50 text-sm font-semibold">${h.initials}</span>
+        <div>
+          <div class="font-semibold">${h.name}</div>
+          <div class="text-xs text-muted">Bats ${h.bats} · ${h.level} · ${h.swings} swings</div>
+        </div>
+      </div>
+      <div class="mt-6 flex items-end justify-between">
+        <div>
+          <div class="font-display text-5xl font-bold leading-none tabular-nums">${h.latest}</div>
+          <div class="text-xs text-muted">latest overall</div>
+        </div>
+        ${sparklineSvg(h.trend)}
+      </div>
+    </a>`).join("")
+  const addCard = `
+    <button id="new-hitter-btn" class="flex min-h-[176px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-line bg-transparent text-muted hover:border-navy hover:text-navy" aria-label="Create a new hitter">
+      <span class="text-3xl leading-none" aria-hidden="true">+</span>
+      <span class="font-medium">New hitter</span>
+    </button>`
+  $("#hitter-grid").innerHTML = cards + addCard
+  $("#new-hitter-btn").addEventListener("click", handleNewHitterClick)
+}
+
+const handleNewHitterClick = () => $("#new-hitter").showModal()
+
+/* ---------- hitter page ---------- */
+let selectedSwing = 0
+
+const renderSwingRail = () => {
+  $("#swing-count").textContent = `${SWINGS.length}`
+  $("#swing-rail").innerHTML = SWINGS.map((s, i) => {
+    const isCurrent = i === selectedSwing
+    return `<li class="shrink-0">
+      <button class="js-swing flex w-40 items-center justify-between gap-2 rounded-md border px-3 py-2 text-left lg:w-full lg:rounded-none lg:border-0 lg:border-l-4 lg:px-4 ${isCurrent ? "border-mlbred bg-mlbred-50/60 lg:border-l-mlbred" : "border-line lg:border-l-transparent hover:bg-paper"}" data-index="${i}" aria-current="${isCurrent}" aria-label="Swing on ${s.date} at ${s.time}">
+        <span>
+          <span class="block text-sm font-medium">${s.date}</span>
+          <span class="block text-[11px] text-muted">${s.time} · <span class="${s.mode === "hit" ? "text-mlbred" : "text-steel"} font-semibold uppercase">${s.mode}</span></span>
+        </span>
+        <span class="font-display text-2xl font-semibold tabular-nums">${s.overall}</span>
+      </button>
+    </li>`
+  }).join("")
+  $$(".js-swing").forEach((b) => b.addEventListener("click", handleSwingClick))
+}
+
+const handleSwingClick = (event) => selectSwing(Number(event.currentTarget.dataset.index))
+
+const selectSwing = (index) => {
+  selectedSwing = index
+  const s = SWINGS[index]
+  $("#swing-date").textContent = `${s.date}, 2026 · ${s.time}`
+  const chip = $("#swing-mode")
+  chip.textContent = s.mode === "hit" ? "Hit" : "Dry swing"
+  chip.className = `rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider ${modeChipClasses(s.mode)}`
+  $("#stat-overall").textContent = s.overall
+  $("#stat-form").textContent = s.form
+  $("#stat-contact").textContent = s.contact ?? "–"
+  $("#stat-bat").textContent = s.bat.toFixed(1)
+  $("#coach-headline").textContent = s.headline
+  renderSwingRail()
+}
+
+const renderPhaseTable = () => {
+  $("#phase-table").innerHTML = PHASES.map((p) => `
+    <tr class="border-b border-line last:border-0">
+      <td class="py-2 font-medium">${p.phase}</td>
+      <td class="py-2 text-right">${p.hips}</td>
+      <td class="py-2 text-right">${p.chest}</td>
+      <td class="py-2 text-right">${p.hands.toFixed(1)}</td>
+      <td class="py-2 text-right"><span class="text-[11px] font-semibold uppercase tracking-wider ${p.timing === "late" ? "text-mlbred" : "text-muted"}">${p.timing === "late" ? "Chest early" : "On time"}</span></td>
+    </tr>`).join("")
+}
+
+const renderStage = (mode) => {
+  $("#stage").innerHTML = skeletonSvg({ isThreeD: mode === "3d" })
+  $$(".js-stage-mode").forEach((b) => {
+    const isActive = b.dataset.mode === mode
+    b.setAttribute("aria-pressed", String(isActive))
+    b.className = `js-stage-mode rounded px-3 py-1 ${isActive ? "bg-navy text-white" : "text-muted hover:text-navy"}`
+  })
+}
+
+const handleStageModeClick = (event) => renderStage(event.currentTarget.dataset.mode)
+
+const renderMeasurements = (group) => {
+  $$(".js-meas-tab").forEach((t) => {
+    const isActive = t.dataset.group === group
+    t.setAttribute("aria-selected", String(isActive))
+    t.className = `js-meas-tab rounded px-3 py-1 ${isActive ? "bg-white font-medium text-navy shadow-sm" : "text-muted hover:text-navy"}`
+  })
+  $("#meas-rows").innerHTML = MEASUREMENTS[group].map((m) => {
+    const isOut = m.pos < 10 || m.pos > 90
+    return `<div class="grid grid-cols-[minmax(0,1.3fr)_80px_minmax(0,1.4fr)_24px] items-center gap-4 py-3">
+      <div class="min-w-0 text-sm font-medium">${m.label}${m.isFocus ? ' <span class="ml-1 rounded-full bg-mlbred-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-mlbred">Focus</span>' : ""}</div>
+      <div class="text-right font-display text-xl font-semibold tabular-nums">${m.value}</div>
+      <div class="relative h-2.5" aria-label="${m.label}: ${isOut ? "outside" : "within"} the lab range">
+        <span class="absolute inset-y-0 left-[10%] w-[80%] rounded-full bg-line"></span>
+        <span class="absolute inset-y-0 rounded-full bg-steel/40" style="left:${m.band[0]}%;width:${m.band[1] - m.band[0]}%"></span>
+        <span class="absolute -top-[4px] h-[18px] w-1 -translate-x-1/2 rounded-sm ${isOut ? "bg-mlbred" : "bg-navy"}" style="left:${Math.min(98, m.pos)}%"></span>
+      </div>
+      <button class="grid h-6 w-6 place-items-center rounded-full text-xs text-muted ring-1 ring-line hover:text-navy" title="${m.help}" aria-label="About ${m.label}: ${m.help}">i</button>
+    </div>`
+  }).join("")
+}
+
+const handleMeasTabClick = (event) => renderMeasurements(event.currentTarget.dataset.group)
+
+const renderHistory = () => {
+  const chronological = [...SWINGS].reverse()
+  const forms = chronological.map((s) => s.form)
+  const avg = Math.round(forms.reduce((a, b) => a + b, 0) / forms.length)
+  const tiles = [
+    { k: "Swings", v: SWINGS.length },
+    { k: "Average form", v: avg },
+    { k: "Best overall", v: Math.max(...SWINGS.map((s) => s.overall)) },
+    { k: "Since first swing", v: `+${chronological.at(-1).overall - chronological[0].overall}` },
+  ]
+  $("#hist-tiles").innerHTML = tiles.map((t) => `<div class="border-t border-line pt-2"><dt class="text-xs text-muted">${t.k}</dt><dd class="font-display text-3xl font-semibold tabular-nums">${t.v}</dd></div>`).join("")
+  renderLineChart($("#hist-overall"), chronological.map((s) => s.overall), { min: 50, max: 80 })
+  renderLineChart($("#hist-bat"), chronological.map((s) => s.bat), { min: 60, max: 72, unit: " mph" })
+  $("#hist-table").innerHTML = SWINGS.map((s, i) => `
+    <tr class="js-hist-row cursor-pointer border-b border-line last:border-0 hover:bg-paper" data-index="${i}" tabindex="0" aria-label="Open swing on ${s.date} at ${s.time}">
+      <td class="py-2">${s.date} <span class="text-muted">${s.time}</span></td>
+      <td class="py-2"><span class="rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${modeChipClasses(s.mode)}">${s.mode}</span></td>
+      <td class="py-2 text-right font-semibold">${s.overall}</td>
+      <td class="py-2 text-right">${s.form}</td>
+      <td class="py-2 text-right">${s.contact ?? "–"}</td>
+      <td class="py-2 text-right">${s.bat.toFixed(1)}</td>
+      <td class="max-w-[260px] truncate py-2 pl-4 text-muted">${s.headline}</td>
+    </tr>`).join("")
+  $$(".js-hist-row").forEach((r) => {
+    r.addEventListener("click", handleHistoryRowClick)
+    r.addEventListener("keydown", handleHistoryRowKeyDown)
+  })
+}
+
+const handleHistoryRowClick = (event) => {
+  selectSwing(Number(event.currentTarget.dataset.index))
+  window.scrollTo({ top: 0, behavior: "smooth" })
+}
+
+const handleHistoryRowKeyDown = (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return
+  event.preventDefault()
+  handleHistoryRowClick(event)
+}
+
+const renderHitterMenu = () => {
+  $("#hitter-menu-list").innerHTML = HITTERS.map((h) => `
+    <a href="#hitter" class="flex items-center gap-2 px-4 py-2 text-sm hover:bg-paper ${h.id === "matteo" ? "font-semibold" : ""}" role="menuitem">
+      <span class="grid h-6 w-6 place-items-center rounded-full bg-navy-50 text-[10px] font-semibold">${h.initials}</span>${h.name}
+      ${h.id === "matteo" ? '<span class="ml-auto h-1.5 w-1.5 rounded-full bg-mlbred" aria-label="current"></span>' : ""}
+    </a>`).join("")
+}
+
+const handleHitterMenuToggle = () => {
+  const menu = $("#hitter-menu")
+  const isOpen = menu.classList.toggle("hidden") === false
+  $("#hitter-menu-btn").setAttribute("aria-expanded", String(isOpen))
+}
+
+const handleDocumentClick = (event) => {
+  if (event.target.closest("#hitter-menu-btn") || event.target.closest("#hitter-menu")) return
+  $("#hitter-menu").classList.add("hidden")
+  $("#hitter-menu-btn").setAttribute("aria-expanded", "false")
+}
+
+const setDrawerOpen = (isOpen) => {
+  $("#coach-drawer").classList.toggle("translate-x-full", !isOpen)
+  $("#coach-drawer").setAttribute("aria-hidden", String(!isOpen))
+  $("#coach-backdrop").classList.toggle("hidden", !isOpen)
+  if (isOpen) $("#coach-q").focus()
+}
+
+const handleCoachOpen = () => setDrawerOpen(true)
+const handleCoachClose = () => setDrawerOpen(false)
+const handleKeyDown = (event) => {
+  if (event.key === "Escape") setDrawerOpen(false)
+}
+
+/* ---------- overlay + concept B ---------- */
+const SCORE_ROWS = [
+  { label: "Form", value: 70, isMain: true },
+  { label: "Power", value: 74 },
+  { label: "Sequencing", value: 63 },
+  { label: "Posture", value: 72 },
+  { label: "Contact", value: 76, isMain: true },
+]
+
+const renderOverlay = () => {
+  $("#overlay-stage").innerHTML = skeletonSvg()
+  $("#overlay-end-stage").innerHTML = skeletonSvg({ hasLabel: false, isDimmed: true })
+  $("#end-bars").innerHTML = scoreBarsMarkup(SCORE_ROWS)
+}
+
+const renderConceptB = () => {
+  $("#b-stage").innerHTML = skeletonSvg()
+  $("#b-bars").innerHTML = scoreBarsMarkup(SCORE_ROWS)
+  $("#b-chips").innerHTML = SWINGS.map((s, i) => `
+    <button class="shrink-0 rounded-full border px-3 py-1 text-xs ${i === 0 ? "border-mlbred bg-mlbred text-white" : "border-line text-muted hover:border-navy hover:text-navy"}" aria-pressed="${i === 0}">
+      ${s.date} · <span class="font-semibold tabular-nums">${s.overall}</span>
+    </button>`).join("")
+}
+
+/* ---------- routing between mockup screens ---------- */
+const VIEWS = ["home", "hitter", "overlay", "conceptb"]
+
+const showView = () => {
+  const requested = location.hash.replace("#", "")
+  const view = VIEWS.includes(requested) ? requested : "home"
+  $$("[data-view]").forEach((s) => { s.hidden = s.dataset.view !== view })
+  $$(".js-nav").forEach((a) => {
+    const isActive = a.getAttribute("href") === `#${view}`
+    a.setAttribute("aria-current", isActive ? "page" : "false")
+    a.className = `js-nav rounded-full px-3 py-1 ${isActive ? "bg-navy text-white" : "text-muted hover:text-navy"}`
+  })
+  setDrawerOpen(false)
+  window.scrollTo(0, 0)
+}
+
+/* ---------- start ---------- */
+$$(".js-brand").forEach((el) => { el.innerHTML = brandMarkup({ isOnDark: true }) })
+$$(".js-brand-dark").forEach((el) => { el.innerHTML = brandMarkup({ isOnDark: false }) })
+$$(".js-seq").forEach(renderSequenceChart)
+$$(".js-seq-legend").forEach(renderSequenceLegend)
+$$(".js-stage-mode").forEach((b) => b.addEventListener("click", handleStageModeClick))
+$$(".js-meas-tab").forEach((t) => t.addEventListener("click", handleMeasTabClick))
+$("#hitter-menu-btn").addEventListener("click", handleHitterMenuToggle)
+$("#coach-open").addEventListener("click", handleCoachOpen)
+$("#coach-close").addEventListener("click", handleCoachClose)
+$("#coach-backdrop").addEventListener("click", handleCoachClose)
+document.addEventListener("click", handleDocumentClick)
+document.addEventListener("keydown", handleKeyDown)
+window.addEventListener("hashchange", showView)
+
+renderHome()
+renderHitterMenu()
+renderStage("video")
+renderPhaseTable()
+renderMeasurements("sequencing")
+renderHistory()
+selectSwing(0)
+renderOverlay()
+renderConceptB()
+showView()
+</script>
+</body>
+</html>

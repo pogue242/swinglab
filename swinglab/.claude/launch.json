@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "swinglab-server",
+      "runtimeExecutable": "C:/Users/darkn/Projects/hack knights/baseball-batting-analyze/swinglab/swinglab/.venv/Scripts/python.exe",
+      "runtimeArgs": ["C:/Users/darkn/Projects/hack knights/baseball-batting-analyze/swinglab/swinglab/api/server.py", "--port", "8000", "--debounce", "3"],
+      "port": 8000
+    }
+  ]
+}

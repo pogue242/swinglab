@@ -1,0 +1,847 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SwingLab Viewer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Batting-cage console: profiles on the left, the swing in the middle, history above it. */
+:root{
+  --navy:#0C2340; --navy-700:#1A3560; --navy-50:#EEF2F7; --red:#BF0D3E; --red-50:#FBEAEF; --steel:#4A7FB5; --steel-100:#DCE7F2;
+  --bg:#F6F6F4; --panel:#FFFFFF; --ink:#0C2340; --muted:#5C6670; --line:#E3E3E0; --soft:#EEF2F7;
+  --seam:#BF0D3E; --pelvis:#0C2340; --torso:#4A7FB5; --hands:#8A94A0; --ghost:#A7B0BA;
+  --good:#2E7D4F; --warn:#B26A00; --bad:#BF0D3E;
+  --display:"Barlow Condensed","Arial Narrow",sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --stage:#FAFAF8; color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--ink)}
+body{font:15px/1.5 var(--body);margin:0}
+table{color:inherit;font:inherit}
+button{font:inherit;color:inherit}
+/* top bar (navy), like the MLB-style mockup */
+.topbar{background:var(--navy);color:#fff;position:sticky;top:0;z-index:30}
+.topbar .in{display:flex;align-items:center;gap:12px;padding:10px 22px;flex-wrap:wrap}
+.brandlink{display:flex;align-items:center;gap:8px;color:#fff;text-decoration:none;background:none;border:0;cursor:pointer;padding:0}
+.brandlink span{font:700 22px/1 var(--display);letter-spacing:.06em;text-transform:uppercase}
+.tb-btn{border:1px solid rgb(255 255 255 / .4);background:transparent;color:#fff;border-radius:6px;padding:6px 12px;font:500 14px var(--body);cursor:pointer}
+.tb-btn:hover{background:rgb(255 255 255 / .1)}
+.tb-btn.red{background:var(--red);border-color:var(--red)}
+.tb-right{margin-left:auto;display:flex;gap:8px;align-items:center}
+.hmenu{position:relative}
+.hmenu>button{display:flex;align-items:center;gap:8px;border:0;background:rgb(255 255 255 / .1);color:#fff;border-radius:6px;padding:5px 10px;font:500 14px var(--body);cursor:pointer}
+.av{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#fff;color:var(--navy);font:600 11px var(--body)}
+.av.lg{width:40px;height:40px;background:var(--navy-50);font-size:14px}
+.menu{position:absolute;left:0;top:calc(100% + 6px);min-width:220px;background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgb(12 35 64 / .18);overflow:hidden;z-index:40}
+.menu button,.menu a{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:8px 14px;border:0;background:none;font:14px var(--body);color:inherit;text-decoration:none;cursor:pointer}
+.menu button:hover,.menu a:hover{background:var(--bg)}
+.menu .sep{border-top:1px solid var(--line)}
+.menu .danger{color:var(--red)}
+.toggle{display:flex;gap:6px;align-items:center;font-size:13px;color:rgb(255 255 255 / .8)}
+.dot{width:8px;height:8px;border-radius:50%;background:rgb(255 255 255 / .4);display:inline-block}
+.dot.on{background:#5CC489}
+.btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 12px;cursor:pointer;font-size:14px}
+.btn:hover{border-color:var(--navy)}
+.btn.primary{background:var(--red);color:#fff;border-color:var(--red)}
+.btn.navy{background:var(--navy);color:#fff;border-color:var(--navy)}
+/* home */
+.home{max-width:1150px;margin:0 auto;padding:40px 22px 60px}
+.home h1{font:700 48px/1 var(--display);text-transform:uppercase;letter-spacing:.03em;margin:0}
+.home .lead{color:var(--muted);margin:6px 0 28px}
+.hgrid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
+.hcard{display:flex;flex-direction:column;text-align:left;background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;cursor:pointer;min-height:176px}
+.hcard:hover{border-color:var(--navy);box-shadow:0 2px 10px rgb(12 35 64 / .08)}
+.hcard.last{border-top:4px solid var(--red)}
+.hcard .who{display:flex;gap:12px;align-items:center}
+.hcard .who b{display:block;font-weight:600}
+.hcard .who small{color:var(--muted);font-size:12px}
+.hcard .big{display:flex;justify-content:space-between;align-items:flex-end;margin-top:auto;padding-top:22px}
+.hcard .num{font:700 48px/1 var(--display);font-variant-numeric:tabular-nums}
+.hcard .num small{display:block;font:12px var(--body);color:var(--muted)}
+.hadd{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:176px;border:2px dashed var(--line);border-radius:12px;background:transparent;color:var(--muted);cursor:pointer;font:500 15px var(--body)}
+.hadd:hover{border-color:var(--navy);color:var(--navy)}
+.hadd span{font-size:30px;line-height:1}
+.reflink{display:inline-flex;gap:6px;margin-top:28px;color:var(--muted);font-size:14px;background:none;border:0;cursor:pointer;padding:0}
+.reflink:hover{color:var(--navy)}
+.foot{text-align:center;font-size:12px;color:var(--muted);padding:24px 0 8px}
+.foot button{background:none;border:0;color:inherit;cursor:pointer;text-decoration:underline}
+/* upload dialog */
+.drop{border:2px dashed var(--line);border-radius:12px;padding:26px;text-align:center;color:var(--muted);cursor:pointer;margin-top:10px}
+.drop.over{border-color:var(--red);background:var(--red-50);color:var(--ink)}
+.drop b{color:var(--ink)}
+.flist{list-style:none;padding:0;margin:10px 0 0;font-size:13px;display:grid;gap:4px}
+.flist li{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line);padding:4px 0}
+.flist small{color:var(--muted)}
+.upbar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:10px}
+.upbar i{display:block;height:100%;width:0;background:var(--navy);transition:width .2s}
+.phone{display:flex;gap:14px;align-items:center;margin-top:14px;border-top:1px solid var(--line);padding-top:14px;font-size:13px;color:var(--muted)}
+.phone #qr{flex:0 0 auto;background:#fff;padding:4px;border:1px solid var(--line);border-radius:6px}
+.phone a{color:var(--navy);word-break:break-all}
+.phone div:last-child{min-width:0;overflow-wrap:anywhere}
+dialog{overflow-x:hidden}
+.upmsg{font-size:14px;margin:10px 0 0;min-height:1.3em}
+.upmsg.ok{color:var(--good)}.upmsg.err{color:var(--red)}
+/* main */
+main{padding:18px 22px 48px;min-width:0;max-width:1400px;margin:0 auto}
+@media (max-width:900px){main{padding:14px 16px 40px}}
+.phead{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 18px;margin-bottom:12px}
+.phead h1{font:700 34px/1 var(--display);margin:0;letter-spacing:.02em}
+.phead .meta{color:var(--muted);font-size:14px;flex:1 1 260px}
+.tabs{display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:3px}
+.tabs button{font:500 13px var(--body);border:0;background:transparent;color:var(--muted);padding:6px 12px;border-radius:6px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--navy);color:#fff}
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--red);outline-offset:2px}
+/* swing history slider */
+.history{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:16px}
+.strip{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:6px}
+.scard{flex:0 0 190px;scroll-snap-align:start;text-align:left;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;cursor:pointer;display:flex;flex-direction:column;gap:2px}
+.scard[aria-current="true"]{border-color:var(--seam);box-shadow:inset 0 0 0 1px var(--seam)}
+.scard .when{font:12px var(--mono);color:var(--muted)}
+.scard .nums{font:500 13px var(--mono)}
+.scard .hl{font-size:12px;color:var(--muted);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.mode{font:600 10px var(--mono);text-transform:uppercase;letter-spacing:.06em;padding:1px 6px;border-radius:999px;border:1px solid currentColor}
+.mode.hit{color:var(--red)}.mode.miss{color:var(--warn)}.mode.dry{color:var(--steel)}.mode.lab{color:var(--muted)}
+.slider{display:flex;align-items:center;gap:10px;margin-top:6px}
+.slider input{flex:1 1 auto;accent-color:var(--seam)}
+.slider .pos{font:12px var(--mono);color:var(--muted);white-space:nowrap}
+.empty{background:var(--panel);border:1px dashed var(--line);border-radius:10px;padding:28px;text-align:center;color:var(--muted)}
+.empty b{color:var(--ink)}
+/* panels */
+.grid{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:16px;align-items:start}
+@media (max-width:1100px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
+h2{font:600 18px/1.2 var(--display);letter-spacing:.06em;text-transform:uppercase;margin:0 0 10px;color:var(--muted)}
+.stage{position:relative;background:var(--stage);border-radius:8px;overflow:hidden;aspect-ratio:4/3;max-width:100%;touch-action:none;cursor:grab}
+.stage canvas{display:block;width:100%;height:100%}
+.legend{position:absolute;left:10px;top:8px;display:flex;flex-wrap:wrap;gap:10px;font:12px var(--mono);color:var(--muted);pointer-events:none}
+.legend i{display:inline-block;width:10px;height:3px;vertical-align:middle;margin-right:4px}
+.phase-tag{position:absolute;right:10px;top:8px;font:600 16px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--seam)}
+.hint{position:absolute;right:10px;bottom:8px;font-size:12px;color:var(--muted);pointer-events:none}
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
+.controls button{font:500 13px var(--body);border:1px solid var(--line);background:var(--bg);border-radius:6px;padding:5px 10px;cursor:pointer}
+.controls button.on{border-color:var(--ink)}
+.scrub{position:relative;flex:1 1 100%;margin-top:4px}
+.scrub input{width:100%;accent-color:var(--seam)}
+.ticks{position:relative;height:30px;font:11px var(--mono);color:var(--muted)}
+.ticks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+.ticks span.low{top:14px}
+.time{font:12px var(--mono);color:var(--muted);margin-left:auto}
+.vid{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.vid video{display:block;width:100%;max-height:440px;background:#000;border-radius:8px}
+/* verdict */
+.overall{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.overall .big{font:700 56px/1 var(--display);font-variant-numeric:tabular-nums}
+.overall small{color:var(--muted);line-height:1.3}
+.evidence{font-size:13px;color:var(--muted);margin:0 0 12px}
+.scoreblock{border-top:1px solid var(--line);padding:10px 0 4px}
+.score{display:grid;grid-template-columns:118px minmax(0,1fr) 40px;align-items:center;gap:10px;margin:4px 0}
+.score .lab{font:600 16px var(--display);letter-spacing:.05em;text-transform:uppercase}
+.score.sub .lab{font:500 14px var(--body);text-transform:none;letter-spacing:0;color:var(--muted);padding-left:12px}
+.bar{height:10px;background:var(--soft);border-radius:5px;position:relative;overflow:hidden;border:1px solid var(--line)}
+.score.sub .bar{height:7px}
+.bar i{position:absolute;inset:0 auto 0 0;border-radius:5px}
+.score .num{font:500 15px var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+.info{font-size:12px;color:var(--muted);margin:2px 0 6px 0}
+.speeds{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
+.speed{border-top:1px solid var(--line);padding-top:8px}
+.speed .k{font-size:12px;color:var(--muted)}
+.speed .v{font:500 20px var(--mono);font-variant-numeric:tabular-nums}
+.speed .v small{font-size:12px;color:var(--muted)}
+.coach{margin-top:16px;border-top:3px solid var(--red);padding-top:12px}
+.coach h3{font:700 24px/1.15 var(--display);margin:6px 0;text-wrap:balance}
+.coach p{margin:0 0 8px;max-width:65ch}
+.cue{font-weight:600;border-left:3px solid var(--seam);padding-left:10px;margin:10px 0}
+details.notes{margin:10px 0;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px}
+details.notes summary{cursor:pointer;color:var(--warn);font-weight:500}
+details.notes ul{margin:6px 0 2px;padding-left:18px;color:var(--muted)}
+.train{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+.train h4,.chat h4{font:600 16px var(--display);letter-spacing:.06em;text-transform:uppercase;margin:0 0 4px;color:var(--muted)}
+.train ul{list-style:none;padding:0;margin:6px 0;display:grid;gap:8px}
+.train li small{color:var(--muted)}
+.rx{font:500 12px var(--mono)}
+.fine{font-size:12px;color:var(--muted)}
+.badge{display:inline-block;font:500 11px var(--mono);padding:2px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.badge.gem{border-color:var(--pelvis);color:var(--pelvis)}
+ol{margin:4px 0 0;padding-left:20px}
+.chat{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
+.chatlog{display:grid;gap:8px;margin:6px 0;max-height:320px;overflow-y:auto}
+.chatlog p{margin:0;white-space:pre-wrap;max-width:65ch}
+.chatlog .q{font-weight:600}.chatlog .a{border-left:3px solid var(--pelvis);padding-left:10px}
+.chatform{display:flex;gap:8px}.chatform input{flex:1 1 auto;min-width:0;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+.chatform button{border:1px solid var(--ink);background:var(--ink);color:var(--bg);border-radius:6px;padding:8px 14px;cursor:pointer}
+/* lower row */
+.row2{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:16px;margin-top:16px;align-items:start}
+@media (max-width:1100px){.row2{grid-template-columns:minmax(0,1fr)}}
+svg text{font-family:var(--mono);font-size:11px;fill:var(--muted)}
+.clegend{display:flex;flex-wrap:wrap;gap:14px;font:12px var(--mono);color:var(--muted);margin:4px 0 0}
+.clegend i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:5px}
+.note{color:var(--muted);font-size:13px;max-width:70ch}
+/* measurements */
+.meas{width:100%;border-collapse:collapse;font-size:14px}
+.meas th{font:600 12px var(--body);text-align:left;color:var(--muted);border-bottom:1px solid var(--line);padding:6px}
+.meas td{border-bottom:1px solid var(--line);padding:8px 6px;vertical-align:top;color:var(--ink)}
+.meas td.n{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.meas td.n small{color:var(--muted)}
+.meas tr.grp td{font:600 14px var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--ink);padding-top:16px;border-bottom:0}
+.meas tr.grp td span{display:block;font:400 12px var(--body);letter-spacing:0;text-transform:none;color:var(--muted)}
+.meas tr.focus td{background:color-mix(in srgb,var(--seam) 12%,transparent)}
+.meas .what{display:block;font-size:12px;color:var(--muted);margin-top:2px;max-width:52ch}
+.dir{display:inline-block;font:500 11px var(--mono);color:var(--muted);margin-top:3px}
+.range{position:relative;height:10px;min-width:110px;margin-top:6px;background:linear-gradient(90deg,transparent 0 10%,var(--line) 10% 90%,transparent 90%);border-radius:4px}
+.range b{position:absolute;top:-4px;width:4px;height:18px;background:var(--ink);border-radius:2px;transform:translateX(-50%)}
+.range b.out{background:var(--red)}
+.range i{position:absolute;top:0;bottom:0;left:50%;width:1px;background:var(--muted)}
+.range u{position:absolute;top:0;bottom:0;background:color-mix(in srgb,var(--steel) 45%,transparent);border-radius:4px}
+.range em{position:absolute;top:12px;font:10px var(--mono);font-style:normal;color:var(--warn);white-space:nowrap}
+/* progress */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:12px}
+.tiles div{border-top:1px solid var(--line);padding-top:6px}
+.tiles .k{font-size:12px;color:var(--muted)}
+.tiles .v{font:500 22px var(--mono);font-variant-numeric:tabular-nums}
+.tbl{overflow-x:auto}
+.plain{border-collapse:collapse;width:100%;font-size:13px}
+.plain th{font:600 12px var(--body);text-align:left;color:var(--muted);border-bottom:1px solid var(--line);padding:6px}
+.plain td{border-bottom:1px solid var(--line);padding:6px}
+.plain td.n{font-family:var(--mono);text-align:right}
+.plain tr{cursor:pointer}.plain tr:hover td{background:var(--soft)}
+/* status */
+.status{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.pill{font:600 11px var(--mono);padding:2px 8px;border-radius:999px;color:var(--bg)}
+.ok{background:var(--good)} .wait{background:var(--warn)} .no{background:var(--bad)}
+.check{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;align-items:start;margin:8px 0}
+.check div{font-size:13px}.check div small{color:var(--muted);display:block}
+/* dialog + toast */
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);padding:20px;max-width:420px;width:calc(100% - 32px)}
+dialog::backdrop{background:rgb(0 0 0 / .5)}
+dialog h2{color:var(--ink)}
+.form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.form label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.form label.wide{grid-column:1/-1}
+.form input,.form select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+.formerr{color:var(--bad);font-size:13px;min-height:1.2em;margin:8px 0 0}
+.dlgbtns{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+.toast{position:fixed;right:18px;bottom:18px;background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:10px;font-size:14px;box-shadow:0 6px 24px rgb(0 0 0 / .25);opacity:0;transform:translateY(8px);transition:.25s;pointer-events:none}
+.toast.show{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="in">
+    <button class="brandlink" id="brand" aria-label="SwingLab home"><svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M2 2h16v9l-8 7-8-7z" fill="#fff"/><path d="M2 2h16v3H2z" fill="#BF0D3E"/></svg><span>SwingLab</span></button>
+    <div class="hmenu" id="hmenuWrap" hidden>
+      <button id="hmenuBtn" aria-haspopup="menu" aria-expanded="false"><span class="av" id="hmenuAv"></span><span id="hmenuName"></span><span aria-hidden="true" style="opacity:.7">&#9662;</span></button>
+      <div class="menu" id="hmenu" role="menu" hidden></div>
+    </div>
+    <div class="tb-right">
+      <label class="toggle" id="liveWrap" hidden title="When a new swing finishes analyzing, show it"><input type="checkbox" id="live" checked><span class="dot" id="liveDot"></span>Auto-show</label>
+      <button class="tb-btn" id="uploadBtn">Upload swing</button>
+      <button class="tb-btn red" id="coachBtn" hidden>Ask coach</button>
+    </div>
+  </div>
+</header>
+
+<section class="home" id="view-home" hidden>
+  <h1>Choose a hitter</h1>
+  <p class="lead">Pick up where you left off, or add someone new.</p>
+  <div class="hgrid" id="hgrid"></div>
+  <button class="reflink" id="reflink" hidden></button>
+  <p class="fine" id="homeNote" style="margin-top:18px"></p>
+</section>
+
+<div id="view-hitter" hidden>
+  <main>
+    <div class="phead">
+      <div><h1 id="pname">SwingLab</h1></div>
+      <div class="meta" id="pmeta"></div>
+      <div class="tabs" role="tablist">
+        <button role="tab" id="tab-swing" aria-selected="true">Swing</button>
+        <button role="tab" id="tab-progress" aria-selected="false">Progress</button>
+      </div>
+    </div>
+
+    <div class="history" id="history" hidden>
+      <div class="strip" id="strip" aria-label="Swings of this profile"></div>
+      <div class="slider"><button class="btn" id="prevSwing" aria-label="Previous swing">‹</button>
+        <input type="range" id="swingSlider" min="0" max="0" value="0" aria-label="Choose a swing">
+        <button class="btn" id="nextSwing" aria-label="Next swing">›</button><span class="pos" id="swingPos"></span></div>
+    </div>
+    <div class="empty" id="emptyState" hidden></div>
+
+    <section id="view-swing" hidden>
+      <div class="grid">
+        <div class="panel">
+          <h2>3D replay</h2>
+          <div class="stage" id="stage">
+            <div class="legend">
+              <span><i style="background:var(--ink)"></i>hitter</span>
+              <span><i style="background:var(--ghost)"></i>fastest lab swing</span>
+              <span><i style="background:var(--hands)"></i>bat (lab only)</span>
+            </div>
+            <div class="phase-tag" id="phaseTag"></div>
+            <div class="hint">drag to orbit · scroll to zoom</div>
+          </div>
+          <div class="controls">
+            <button id="play">Play</button>
+            <button id="slow" class="on">¼ speed</button>
+            <button data-jump="load">Load</button>
+            <button data-jump="foot_plant">Foot plant</button>
+            <button data-jump="contact">Contact</button>
+            <button id="ghostBtn" class="on">Ghost</button>
+            <span class="time" id="clock">0.000 s</span>
+            <div class="scrub">
+              <input type="range" id="scrub" min="0" max="100" value="0" aria-label="Swing time">
+              <div class="ticks" id="ticks"></div>
+            </div>
+          </div>
+          <div class="vid" id="vidwrap" hidden>
+            <h2>Annotated video</h2>
+            <video id="ov" muted playsinline preload="auto" controls></video>
+            <p class="note">Skeleton, hip (blue) and shoulder (red) lines with the separation measured in 3D, live speeds, scores at the end. Synced with the 3D replay: scrub either one.</p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Verdict</h2>
+          <div class="overall"><span class="big" id="overall">–</span><small id="overallWhat"></small></div>
+          <p class="evidence" id="evidence"></p>
+          <div id="scores"></div>
+          <div class="speeds" id="speeds"></div>
+          <div id="notes"></div>
+          <div class="coach" id="coach"></div>
+          <div class="chat">
+            <h4>Ask the coach</h4>
+            <div class="chatlog" id="chatLog" aria-live="polite"></div>
+            <form class="chatform" id="chatForm"><input id="chatQ" maxlength="500" placeholder="e.g. What should I feel in my hips?" aria-label="Question for the coach"><button>Ask</button></form>
+            <p class="fine">Gemini answers from this swing's measurements only.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="row2">
+        <div class="panel">
+          <h2>Kinematic sequence</h2>
+          <div id="chart"></div>
+          <div class="clegend"><span><i style="background:var(--pelvis)"></i>hips (°/s)</span><span><i style="background:var(--torso)"></i>chest (°/s)</span><span><i style="background:var(--hands);height:2px"></i>hands (m/s, right axis)</span></div>
+          <p class="note">In an efficient swing the hips reach top speed first, then the chest, then the hands, each faster than the last. Dashed lines: foot plant and contact, found from the skeleton.</p>
+        </div>
+        <div class="panel">
+          <h2>Measurements</h2>
+          <p class="note" style="margin-top:-4px">Compared with 677 lab swings: the grey bar is the middle 80% of lab hitters, the green band is where the hitters with the fastest bats for their size sit (top third), the dark marker is you.</p>
+          <div class="tbl"><table class="meas" id="meas"></table></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-progress" hidden>
+      <div class="panel">
+        <h2>Progress</h2>
+        <div class="tiles" id="ptiles"></div>
+        <div id="pchart"></div>
+        <div class="clegend"><span><i style="background:var(--ink)"></i>overall</span><span><i style="background:var(--pelvis)"></i>form</span><span><i style="background:var(--good)"></i>contact (hits)</span></div>
+        <div id="bchart" style="margin-top:14px"></div>
+        <div class="clegend"><span><i style="background:var(--hands)"></i>bat speed predicted from the body (mph)</span><span><i style="background:var(--seam)"></i>bat speed measured, slow motion (mph)</span></div>
+      </div>
+      <div class="panel" style="margin-top:16px">
+        <h2>All swings</h2>
+        <div class="tbl"><table class="plain" id="ptable"></table></div>
+      </div>
+    </section>
+
+    <section id="view-status" hidden>
+      <div class="status" id="status"></div>
+    </section>
+    <p class="foot"><button id="statusLink">System status</button></p>
+  </main>
+</div>
+
+<dialog id="upDlg">
+  <form method="dialog" id="upForm">
+    <h2>Upload a swing</h2>
+    <div class="form">
+      <label class="wide">Hitter<select name="hitter" id="upHitter"></select></label>
+    </div>
+    <div class="drop" id="upDrop" tabindex="0" role="button" aria-label="Choose recording files">
+      <b>Drop recordings here</b> or click to choose<br><small>Record3D .r3d, a zipped Stray Scanner folder, slow-motion .mov/.mp4 (name a yardstick clip "yardstick…")</small>
+      <input type="file" id="upFiles" multiple hidden accept=".r3d,.zip,.mov,.mp4,.m4v">
+    </div>
+    <ul class="flist" id="upList"></ul>
+    <div class="upbar" id="upBar" hidden><i></i></div>
+    <p class="upmsg" id="upMsg" role="status"></p>
+    <div class="phone" id="upPhone" hidden><div id="qr"></div><div>Or upload <b>from a phone</b> on the same Wi-Fi: scan the code or open<br><a id="upPhoneUrl" target="_blank"></a><br><span id="upDropHint"></span></div></div>
+    <div class="dlgbtns"><button class="btn" value="cancel" formnovalidate>Close</button><button class="btn primary" id="upGo" value="go">Upload</button></div>
+  </form>
+</dialog>
+
+<dialog id="profDlg">
+  <form method="dialog" id="profForm">
+    <h2 id="profDlgTitle">New profile</h2>
+    <div class="form">
+      <label class="wide">Name<input name="name" required maxlength="60" autocomplete="off"></label>
+      <label>Bats<select name="bats"><option value="R">Right</option><option value="L">Left</option></select></label>
+      <label>Level<select name="level"><option value="high_school">High school</option><option value="college" selected>College</option><option value="independent">Independent</option><option value="milb">Minor league</option></select></label>
+      <label>Height (cm)<input name="height_cm" type="number" min="100" max="230" step="0.5" required></label>
+      <label>Weight (kg)<input name="mass_kg" type="number" min="25" max="200" step="0.5"></label>
+      <label>Age<input name="age" type="number" min="8" max="80" step="1"></label>
+    </div>
+    <p class="fine">Height, weight, age and level adjust the scores for body size. Changes apply to swings analyzed from now on.</p>
+    <p class="formerr" id="profErr" role="alert"></p>
+    <div class="dlgbtns"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" id="profSave" value="save">Save</button></div>
+  </form>
+</dialog>
+<div class="toast" id="toast" role="status"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(async function(){
+const $=s=>document.querySelector(s), css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const EMB=window.SWINGLAB_DATA||null;              // single-file viewer (scripts/build_web.py): read-only
+let SERVED=false, APP=null;
+try{APP=EMB?EMB.app:await fetch("data/app.json").then(r=>{if(!r.ok)throw 0;return r.json()})}catch(e){APP={feature_info:{},population:{},target:{},groups:{},status:null}}
+try{if(!EMB){const r=await fetch("api/profiles");SERVED=r.ok}}catch(e){}
+const GROUPS=["power","transfer","posture"], GLAB={power:"Power",transfer:"Sequencing",posture:"Posture"};
+const PHASE_LABEL={load:"Load",foot_plant:"Foot plant",contact:"Contact"};
+let PROFILES=[], PID=null, SWINGS=[], SI=0, REC=null; const CACHE={};
+
+/* ---------- data access (server API, or the embedded read-only data) ---------- */
+async function loadProfiles(){
+  if(SERVED){const d=await fetch("api/profiles").then(r=>r.json());PROFILES=d.profiles}
+  else PROFILES=(EMB&&EMB.profiles||[]).map(p=>({...p,n_swings:(EMB.swings[p.id]||[]).length}));
+}
+async function loadSwings(pid){
+  if(SERVED)return (await fetch(`api/profiles/${pid}/swings`).then(r=>r.json())).swings;
+  return (EMB.swings[pid]||[]).map((r,i)=>({id:r.id,url:"#"+i,recorded_at:r.recorded_at,mode:r.mode||"dry",scores:r.analysis.scores,
+    bat_speed_predicted:r.analysis.predicted.bat_speed,bat_speed_measured:(r.measured||{}).bat_speed_mph,exit_speed:(r.measured||{}).exit_velo_mph,headline:r.report.headline,_rec:r}));
+}
+async function loadRecord(sw){
+  if(sw._rec)return sw._rec;
+  if(!CACHE[sw.url])CACHE[sw.url]=await fetch(sw.url).then(r=>r.json());
+  return CACHE[sw.url];
+}
+
+/* ---------- home screen + hitter menu + profile header ---------- */
+const initials=n=>String(n||"?").trim().split(/\s+/).map(w=>w[0]).join("").slice(0,2).toUpperCase();
+const LEVEL={high_school:"high school",college:"college",independent:"independent",milb:"minor league"};
+function sparkline(vals){if(!vals||vals.length<2)return"";const W=120,H=32,mn=Math.min(...vals)-2,mx=Math.max(...vals)+2;
+  const pts=vals.map((v,i)=>`${(i/(vals.length-1)*W).toFixed(1)},${(H-(v-mn)/(mx-mn)*H).toFixed(1)}`),[lx,ly]=pts.at(-1).split(",");
+  return `<svg viewBox="-4 -4 ${W+8} ${H+8}" width="112" height="32" aria-hidden="true"><polyline fill="none" stroke="var(--navy)" stroke-width="2" points="${pts.join(" ")}"/><circle cx="${lx}" cy="${ly}" r="3" fill="var(--red)"/></svg>`}
+function renderHome(){
+  const last=localStorageGet("pid"), real=PROFILES.filter(p=>!p.synthetic), lab=PROFILES.find(p=>p.synthetic);
+  $("#hgrid").innerHTML=real.map(p=>`<button class="hcard${p.id===last?" last":""}" data-pid="${esc(p.id)}" aria-label="Open ${esc(p.name)}">
+      <span class="who"><span class="av lg">${esc(initials(p.name))}</span><span><b>${esc(p.name)}</b><small>Bats ${esc(p.bats||"R")} · ${esc(LEVEL[p.level]||p.level||"")} · ${p.n_swings} swing${p.n_swings===1?"":"s"}</small></span></span>
+      <span class="big"><span class="num">${p.latest_overall!=null?Math.round(p.latest_overall):"–"}<small>latest overall</small></span>${sparkline(p.trend)}</span></button>`).join("")
+    +(SERVED?`<button class="hadd" id="homeNew"><span aria-hidden="true">+</span>New hitter</button>`:"");
+  $("#hgrid").querySelectorAll(".hcard").forEach(b=>b.onclick=()=>go(`#hitter/${b.dataset.pid}`));
+  const hn=$("#homeNew");if(hn)hn.onclick=()=>openProfile(null);
+  $("#reflink").hidden=!lab;if(lab){$("#reflink").innerHTML=`<b>Reference:</b> Driveline lab swings · ${lab.n_swings} swings <span aria-hidden="true">&rarr;</span>`;$("#reflink").onclick=()=>go(`#hitter/${lab.id}`)}
+  $("#homeNote").innerHTML=SERVED?"":"Read-only view. Run <b>python api\\server.py</b> to add hitters, upload swings and ask the coach.";
+}
+function renderMenu(){
+  const p=PROFILES.find(x=>x.id===PID);$("#hmenuWrap").hidden=!p;if(!p)return;
+  $("#hmenuAv").textContent=initials(p.name);$("#hmenuName").textContent=p.name;
+  $("#hmenu").innerHTML=PROFILES.map(x=>`<button role="menuitem" data-pid="${esc(x.id)}"><span class="av" style="background:var(--navy-50)">${esc(initials(x.name))}</span>${esc(x.name)}${x.id===PID?'<span class="dot" style="background:var(--red);margin-left:auto"></span>':""}</button>`).join("")
+    +(SERVED&&!p.synthetic?`<div class="sep"></div><button role="menuitem" id="mEdit">Edit profile</button><button role="menuitem" class="danger" id="mDel">Delete profile</button>`:"")
+    +`<div class="sep"></div><button role="menuitem" id="mAll">All hitters</button>`;
+  $("#hmenu").querySelectorAll("[data-pid]").forEach(b=>b.onclick=()=>{closeMenu();go(`#hitter/${b.dataset.pid}`)});
+  const me=$("#mEdit");if(me)me.onclick=()=>{closeMenu();openProfile(p)};
+  const md=$("#mDel");if(md)md.onclick=()=>{closeMenu();deleteProfile(p)};
+  $("#mAll").onclick=()=>{closeMenu();go("#home")};
+}
+function closeMenu(){$("#hmenu").hidden=true;$("#hmenuBtn").setAttribute("aria-expanded","false")}
+$("#hmenuBtn").onclick=e=>{e.stopPropagation();const open=$("#hmenu").hidden;$("#hmenu").hidden=!open;$("#hmenuBtn").setAttribute("aria-expanded",String(open))};
+document.addEventListener("click",e=>{if(!e.target.closest("#hmenuWrap"))closeMenu()});
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeMenu()});
+function renderHead(){
+  const p=PROFILES.find(x=>x.id===PID);
+  $("#pname").textContent=p?p.name:"SwingLab";
+  $("#pmeta").innerHTML=p?(p.synthetic?"Driveline lab swings from different hitters (each scored with that hitter's own size)":
+    [p.bats==="L"?"bats left":"bats right",p.height_m?`${Math.round(p.height_m*100)} cm`:null,p.mass_kg?`${p.mass_kg} kg`:"weight not set",p.age?`age ${p.age}`:null,LEVEL[p.level]||p.level].filter(Boolean).join(" · ")
+    +` · ${p.n_swings} swing${p.n_swings===1?"":"s"}`):"";
+}
+async function selectProfile(pid,swingId){
+  PID=pid;if(pid)localStorageSet("pid",pid);renderMenu();renderHead();
+  SWINGS=pid?await loadSwings(pid):[];
+  renderStrip();renderProgress();
+  const has=SWINGS.length>0;$("#history").hidden=!has;$("#view-swing").hidden=!has||currentTab!=="swing";
+  $("#emptyState").hidden=has||currentTab==="status";
+  const pr=PROFILES.find(x=>x.id===pid)||{};
+  $("#emptyState").innerHTML=`<b>No swings yet for ${esc(pr.name)}.</b><br>${SERVED?`Click <b>Upload swing</b>, or put recordings in <code>${esc(pr.drop_folder||"")}</code>: they appear here when the analysis is done.`:""}`;
+  if(has){let i=swingId?SWINGS.findIndex(s=>s.id===swingId||s.file===swingId):SWINGS.length-1;await selectSwing(i<0?SWINGS.length-1:i)}
+}
+function localStorageSet(k,v){try{localStorage.setItem("swinglab."+k,v)}catch(e){}}
+function localStorageGet(k){try{return localStorage.getItem("swinglab."+k)}catch(e){return null}}
+
+/* ---------- routing: #home, #hitter/<id>, #status ---------- */
+function go(h){if(location.hash===h)route();else location.hash=h}
+async function route(){
+  const h=location.hash||"#home", m=h.match(/^#hitter\/(.+)$/), home=!m&&h!=="#status";
+  $("#view-home").hidden=!home;$("#view-hitter").hidden=home;$("#coachBtn").hidden=home;
+  if(home){$("#hmenuWrap").hidden=true;renderHome();return}
+  if(h==="#status"){if(!PID&&PROFILES[0])await selectProfile(PROFILES[0].id);tab("status");return}
+  const pid=decodeURIComponent(m[1]);if(!PROFILES.find(p=>p.id===pid)){go("#home");return}
+  if(pid!==PID)await selectProfile(pid);if(currentTab==="status")tab("swing");else tab(currentTab);
+}
+window.addEventListener("hashchange",route);
+$("#brand").onclick=()=>go("#home");
+$("#statusLink").onclick=()=>go("#status");
+$("#coachBtn").onclick=()=>{tab("swing");$(".chat").scrollIntoView({behavior:"smooth",block:"center"});$("#chatQ").focus()};
+
+/* ---------- swing history slider ---------- */
+const MODE_LABEL={hit:"hit",miss:"miss",dry:"dry swing",lab:"lab"};
+function fmtWhen(s){return s?String(s).replace(/:\d\d$/,""):"lab swing"}
+function renderStrip(){
+  $("#strip").innerHTML=SWINGS.map((s,i)=>{const sc=s.scores||{};
+    return `<button class="scard" data-i="${i}" aria-current="${i===SI}"><span class="when">${esc(fmtWhen(s.recorded_at))} <span class="mode ${esc(s.mode)}">${esc(MODE_LABEL[s.mode]||s.mode)}</span></span>
+    <span class="nums">form ${num(sc.form)}${sc.contact!=null?` · contact ${num(sc.contact)}`:""}</span><span class="hl">${esc(s.headline||"")}</span></button>`}).join("");
+  $("#strip").querySelectorAll(".scard").forEach(b=>b.onclick=()=>selectSwing(+b.dataset.i));
+  $("#swingSlider").max=Math.max(0,SWINGS.length-1);
+}
+const num=v=>v==null?"–":Math.round(v);
+$("#swingSlider").oninput=e=>selectSwing(+e.target.value);
+$("#prevSwing").onclick=()=>SI>0&&selectSwing(SI-1);
+$("#nextSwing").onclick=()=>SI<SWINGS.length-1&&selectSwing(SI+1);
+async function selectSwing(i){
+  SI=i;$("#swingSlider").value=i;$("#swingPos").textContent=`swing ${i+1} of ${SWINGS.length}`;
+  $("#strip").querySelectorAll(".scard").forEach(b=>b.setAttribute("aria-current",+b.dataset.i===i));
+  const card=$(`#strip .scard[data-i="${i}"]`);card&&card.scrollIntoView({block:"nearest",inline:"nearest"});
+  REC=await loadRecord(SWINGS[i]);showSwing();
+}
+
+/* ---------- tabs ---------- */
+let currentTab="swing";
+function tab(which){currentTab=which;["swing","progress"].forEach(k=>{$("#tab-"+k).setAttribute("aria-selected",k===which)});
+  const has=SWINGS.length>0;$("#view-swing").hidden=which!=="swing"||!has;$("#view-progress").hidden=which!=="progress"||!has;
+  $("#view-status").hidden=which!=="status";$("#emptyState").hidden=has||which==="status";$("#history").hidden=!has||which==="status";
+  if(which==="swing"){resize();draw()}}
+$("#tab-swing").onclick=()=>tab("swing");$("#tab-progress").onclick=()=>tab("progress");
+
+/* ---------- three.js stage ---------- */
+const BONES=[["lead_shoulder","rear_shoulder"],["lead_hip","rear_hip"],["lead_shoulder","lead_hip"],["rear_shoulder","rear_hip"],["lead_shoulder","lead_elbow"],["lead_elbow","lead_wrist"],["rear_shoulder","rear_elbow"],["rear_elbow","rear_wrist"],["lead_hip","lead_knee"],["lead_knee","lead_ankle"],["rear_hip","rear_knee"],["rear_knee","rear_ankle"],["neck","lead_shoulder"],["neck","rear_shoulder"]];
+let t=0, playing=false, slow=true, showGhost=true;
+const stage=$("#stage"), renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(2,devicePixelRatio));stage.prepend(renderer.domElement);
+const scene=new THREE.Scene(), cam=new THREE.PerspectiveCamera(38,4/3,0.05,50);
+let az=-0.35, el=0.18, dist=3.6; const target=new THREE.Vector3(0.1,0.95,0);
+function placeCam(){cam.position.set(target.x+dist*Math.sin(az)*Math.cos(el),target.y+dist*Math.sin(el),target.z+dist*Math.cos(az)*Math.cos(el));cam.lookAt(target)}
+const v3=p=>new THREE.Vector3(p[0],p[2],-p[1]);           // canonical (x→pitcher, y, z up) → three (y up)
+function mat(c,op=1){return new THREE.LineBasicMaterial({color:new THREE.Color(c),transparent:op<1,opacity:op})}
+function figure(color,op,jointColor){
+  const g=new THREE.Group(), lines=new THREE.LineSegments(new THREE.BufferGeometry(),mat(color,op));
+  lines.geometry.setAttribute("position",new THREE.Float32BufferAttribute(new Float32Array(BONES.length*6),3));g.add(lines);
+  const dots=[];for(let i=0;i<13;i++){const m=new THREE.Mesh(new THREE.SphereGeometry(0.022,12,8),new THREE.MeshBasicMaterial({color:new THREE.Color(jointColor||color),transparent:op<1,opacity:op}));g.add(m);dots.push(m)}
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.09,16,12),new THREE.MeshBasicMaterial({color:new THREE.Color(color),transparent:true,opacity:op*0.35}));g.add(head);
+  scene.add(g);return {g,lines,dots,head}
+}
+let hitter, ghost, bat, focusRing;
+function buildScene(){
+  scene.clear();
+  scene.add(new THREE.GridHelper(4,16,new THREE.Color(css("--line")),new THREE.Color(css("--line"))));
+  const pm=new THREE.Mesh(new THREE.PlaneGeometry(0.43,0.43),new THREE.MeshBasicMaterial({color:new THREE.Color(css("--panel")),side:THREE.DoubleSide}));
+  pm.rotation.x=-Math.PI/2;pm.position.set(0.15,0.002,0.55);scene.add(pm);
+  ghost=figure(css("--ghost"),0.45);hitter=figure(css("--ink"),1,css("--ink"));
+  bat=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]),new THREE.LineBasicMaterial({color:new THREE.Color(css("--hands"))}));scene.add(bat);
+  focusRing=new THREE.Mesh(new THREE.TorusGeometry(0.07,0.008,8,32),new THREE.MeshBasicMaterial({color:new THREE.Color(css("--seam"))}));scene.add(focusRing);
+}
+function pose(fig,S,i){const J=S.J[i], N=S.joints, P=n=>J[N.indexOf(n)];
+  const arr=fig.lines.geometry.attributes.position.array;
+  BONES.forEach((b,k)=>{const a=v3(P(b[0])),c=v3(P(b[1]));arr.set([a.x,a.y,a.z,c.x,c.y,c.z],k*6)});
+  fig.lines.geometry.attributes.position.needsUpdate=true;
+  N.forEach((n,k)=>fig.dots[k].position.copy(v3(J[k])));
+  const nk=v3(P("neck")),ms=v3(P("lead_shoulder")).add(v3(P("rear_shoulder"))).multiplyScalar(0.5);
+  fig.head.position.copy(nk).add(new THREE.Vector3(0,0.17,0)).add(nk.clone().sub(ms).multiplyScalar(0.5));
+}
+function resize(){const w=stage.clientWidth,h=stage.clientHeight;if(!w||!h)return;renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix()}
+new ResizeObserver(()=>{resize();REC&&draw(false)}).observe(stage);
+let drag=null;
+stage.addEventListener("pointerdown",e=>{drag={x:e.clientX,y:e.clientY,az,el};stage.setPointerCapture(e.pointerId)});
+stage.addEventListener("pointermove",e=>{if(!drag)return;az=drag.az-(e.clientX-drag.x)*0.008;el=Math.max(-0.1,Math.min(1.3,drag.el+(e.clientY-drag.y)*0.006));placeCam();draw(false)});
+stage.addEventListener("pointerup",()=>drag=null);
+stage.addEventListener("wheel",e=>{e.preventDefault();dist=Math.max(1.6,Math.min(7,dist*(1+Math.sign(e.deltaY)*0.08)));placeCam();draw(false)},{passive:false});
+
+/* ---------- one swing ---------- */
+function idxAt(s,tt){return Math.max(0,Math.min(s.time.length-1,Math.round(tt*s.fps)))}
+function showSwing(){
+  const s=REC;t=s.events.load;playing=false;$("#play").textContent="Play";
+  $("#scrub").max=s.time.length-1;
+  const ticks=$("#ticks");ticks.innerHTML="";let lastPos=-99;
+  ["load","foot_plant","contact"].forEach(k=>{const pos=100*idxAt(s,s.events[k])/(s.time.length-1);const sp=document.createElement("span");
+    sp.style.left=pos+"%";sp.textContent=PHASE_LABEL[k];if(pos-lastPos<12)sp.className="low";else lastPos=pos;ticks.append(sp)});
+  renderVerdict();renderChart();renderTable();setOverlay(s);resetChat();resize();draw();
+}
+function phaseAt(s,tt){if(tt>=s.events.contact-0.5/s.fps)return tt>s.events.contact+0.15?"Finish":"Contact";if(tt>=s.events.foot_plant)return"Foot plant → contact";if(tt>=s.events.load)return"Load → stride";return"Stance"}
+function draw(push=true){
+  const s=REC;if(!s)return;const i=idxAt(s,t);pose(hitter,s,i);
+  const R=APP.reference;ghost.g.visible=showGhost&&!!R;
+  if(R&&showGhost){const gi=idxAt(R,R.events.contact+(t-s.events.contact));pose(ghost,R,gi)}
+  if(s.bat){const a=v3(s.bat[0][i]),b=v3(s.bat[1][i]);const d=b.clone().sub(a);bat.geometry.setFromPoints([a.clone().sub(d.clone().multiplyScalar(0.25)),b.clone().add(d.clone().multiplyScalar(0.35))]);bat.visible=true}else bat.visible=false;
+  const fj=s.report&&s.report.focus_joint, k=s.joints.indexOf(fj);
+  focusRing.visible=!!(s.analysis&&s.analysis.focus)&&k>=0;if(focusRing.visible){focusRing.position.copy(v3(s.J[i][k]));focusRing.lookAt(cam.position)}
+  $("#scrub").value=i;$("#clock").textContent=(s.time[i]-s.events.contact).toFixed(3)+" s from contact";
+  $("#phaseTag").textContent=phaseAt(s,t);
+  cursor&&cursor.setAttribute("transform",`translate(${xs(t)},0)`);
+  renderer.render(scene,cam);
+  if(push)syncVideo();
+}
+$("#scrub").oninput=e=>{ov.pause();t=REC.time[+e.target.value];playing=false;$("#play").textContent="Play";draw()};
+$("#play").onclick=()=>{
+  if(ovOK){if(ov.paused){if(t>=ovMeta.frame_times.at(-1)-1e-6)t=REC.events.load;ovSeek(t);ov.playbackRate=slow?0.25:1;ov.play().catch(()=>{})}else ov.pause();return}
+  playing=!playing;$("#play").textContent=playing?"Pause":"Play";if(playing&&t>=REC.time.at(-1)-1e-6)t=REC.events.load;last=performance.now()};
+$("#slow").onclick=e=>{slow=!slow;e.target.classList.toggle("on",slow);ov.playbackRate=slow?0.25:1};
+$("#ghostBtn").onclick=e=>{showGhost=!showGhost;e.target.classList.toggle("on",showGhost);draw()};
+document.querySelectorAll("[data-jump]").forEach(b=>b.onclick=()=>{ov.pause();t=REC.events[b.dataset.jump];playing=false;$("#play").textContent="Play";draw()});
+let last=performance.now();
+function loop(now){const dt=(now-last)/1000;last=now;
+  if(REC&&playing&&ovOK&&!ov.paused){t=tOf(ov.currentTime);draw(false)}          // the video is the clock while it plays
+  else if(REC&&playing&&!ovOK){t+=dt*(slow?0.25:1);if(t>REC.time.at(-1)){t=REC.time.at(-1);playing=false;$("#play").textContent="Replay"}draw()}
+  requestAnimationFrame(loop)}
+
+/* ---------- annotated video, synced with the 3D replay ----------
+   rec.overlay (render.py): video frame k (k < main_frames) shows swing time frame_times[k]; after that,
+   the score card and the slow-motion replay. Paths are relative to the user-data folder. */
+const ov=$("#ov");let ovMeta=null,ovOK=false,ovSeeking=false,ovURL=null;
+function setOverlay(s){
+  ov.pause();ovMeta=SERVED&&s.overlay&&s.overlay.frame_times&&s.overlay.frame_times.length?s.overlay:null;ovOK=false;
+  $("#vidwrap").hidden=!ovMeta;if(!ovMeta){ov.removeAttribute("src");ov.load();return}
+  const want=ovMeta.path;fetch("userdata/"+want).then(r=>{if(!r.ok)throw r.status;return r.blob()}).then(b=>{   // a blob seeks on any server
+    if(!ovMeta||ovMeta.path!==want)return;if(ovURL)URL.revokeObjectURL(ovURL);ovURL=URL.createObjectURL(b);ov.src=ovURL;ov.playbackRate=slow?0.25:1})
+   .catch(()=>{$("#vidwrap").hidden=true})}
+ov.addEventListener("loadeddata",()=>{ovOK=true;ov.playbackRate=slow?0.25:1;syncVideo()});
+ov.addEventListener("error",()=>{ovOK=false;$("#vidwrap").hidden=true});
+function vtOf(tt){const F=ovMeta.frame_times;let lo=0,hi=F.length-1;while(lo<hi){const m=(lo+hi)>>1;if(F[m]<tt)lo=m+1;else hi=m}
+  if(lo>0&&Math.abs(F[lo-1]-tt)<Math.abs(F[lo]-tt))lo--;return (lo+0.5)/ovMeta.fps}
+function tOf(vt){const F=ovMeta.frame_times;return F[Math.max(0,Math.min(F.length-1,Math.floor(vt*ovMeta.fps)))]}
+function ovSeek(tt){const vt=vtOf(tt);if(Math.abs(ov.currentTime-vt)>0.6/ovMeta.fps){ovSeeking=true;ov.currentTime=vt}}
+function syncVideo(){if(ovOK&&ov.paused)ovSeek(t)}
+ov.addEventListener("seeked",()=>{if(ovSeeking){ovSeeking=false;return}if(ov.paused){t=tOf(ov.currentTime);draw(false)}});
+ov.addEventListener("play",()=>{playing=true;$("#play").textContent="Pause";last=performance.now()});
+ov.addEventListener("timeupdate",()=>{if(playing&&!ov.paused){t=tOf(ov.currentTime);draw(false)}});   // backup when frames are throttled
+ov.addEventListener("pause",()=>{playing=false;$("#play").textContent="Play"});
+
+/* ---------- verdict ---------- */
+const tone=v=>v>=60?"--good":v>=35?"--warn":"--bad";
+const bar=(lab,v,sub,title)=>`<div class="score${sub?" sub":""}" title="${esc(title||"")}"><span class="lab">${lab}</span><span class="bar"><i style="width:${Math.max(0,Math.min(100,v))}%;background:var(${tone(v)})"></i></span><span class="num">${Math.round(v)}</span></div>`;
+function renderVerdict(){
+  const s=REC, an=s.analysis||{}, sc=an.scores||{}, mode=s.mode||an.mode||"dry";
+  $("#overall").textContent=num(sc.overall);
+  $("#overallWhat").innerHTML=mode==="hit"?"overall<br>form + ball contact":mode==="miss"?"overall<br>form + contact (missed)":mode==="lab"?"overall form<br>lab swing at a pitched ball":"overall<br>form only (dry swing)";
+  $("#evidence").innerHTML=`<span class="mode ${esc(mode)}">${esc(MODE_LABEL[mode]||mode)}</span> ${esc(s.mode_evidence||"")}`;
+  const G=APP.groups||{};
+  let h=`<div class="scoreblock">${bar("Form",sc.form??sc.overall,false,"How you move: mean of power, sequencing and posture")}
+    <p class="info">How you move, as a percentile of 677 lab swings, adjusted for body size.</p>
+    ${GROUPS.filter(g=>sc[g]!=null).map(g=>bar((G[g]||{}).label||GLAB[g],sc[g],true,(G[g]||{}).help)).join("")}</div>`;
+  if(mode==="miss")h+=`<div class="scoreblock">${bar("Contact",0,false,"swing and miss")}<p class="info">Swing and miss: the ball was in the air but not hit, so contact is 0.</p></div>`;
+  else if(sc.contact!=null){const c=an.contact_detail||{};
+    h+=`<div class="scoreblock">${bar("Contact",sc.contact,false,c.rule)}<p class="info">How squarely the ball was hit: smash factor ${c.smash_factor} (exit ÷ bat speed, 1.2 = square; bat speed ${esc(c.bat_speed_source||"")}), launch ${c.launch_deg}° (8–25° = line drive). Provisional rule until we have our own tee data.</p></div>`}
+  else h+=`<div class="scoreblock"><p class="info">${mode==="lab"?"No contact score for lab swings (the ball came from a pitching machine).":"No contact score: no ball was seen in the video, so this is rated as a dry swing (form only)."}</p></div>`;
+  $("#scores").innerHTML=h;
+  const p=an.predicted||{},m=s.measured||{};
+  const meas=(v,lab)=>v==null?"<small>not measured</small>":`<small>${lab} ${v}</small>`;
+  $("#speeds").innerHTML=`<div class="speed"><div class="k">Bat speed · predicted from body</div><div class="v">${p.bat_speed!=null?p.bat_speed.toFixed(1):"–"} <small>mph ·</small> ${meas(m.bat_speed_mph,"measured")}</div></div>
+  <div class="speed"><div class="k">Exit speed</div><div class="v">${mode==="miss"?'<small>missed the ball</small>':mode==="hit"||mode==="lab"?`${m.exit_velo_mph??"–"} <small>mph ${mode==="lab"?"(lab, pitched ball)":"off the tee"}</small>`:'<small>no ball</small>'}</div></div>`;
+  const w=s.warnings||[];
+  $("#notes").innerHTML=w.length?`<details class="notes"><summary>Data quality: ${w.length} note${w.length>1?"s":""}</summary><ul>${w.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></details>`:"";
+  const r=s.report||{},src=(s.report_source||{}).source, why=(s.report_source||{}).reason;
+  const opts=Object.fromEntries(((s.payload&&s.payload.exercise_options)||[]).map(o=>[o.id,o]));
+  const plan=(r.training_plan||[]).map(t=>{const o=opts[t.exercise_id]||{name:t.exercise_id,how:"",kind:""};
+    return `<li><b>${esc(o.name)}</b> <span class="badge">${esc(o.kind)}</span> <span class="rx">${esc(t.prescription)}</span><br><small>${esc(t.why)} ${esc(o.how)}</small></li>`}).join("");
+  $("#coach").innerHTML=`<span class="badge ${src==="gemini"?"gem":""}" title="${esc(why||"")}">${src==="gemini"?"Written by Gemini from the measurements":"Template report"+(why?` · ${esc(why)}`:"")}</span>
+  <h3>${esc(r.headline)}</h3><p>${esc(r.what_happened)}</p><p>${esc(r.why_it_matters)}</p><p class="cue">${esc(r.cue)}</p>
+  ${r.drill?`<p><b>Drill · ${esc(r.drill.name)}</b></p><ol>${r.drill.steps.map(x=>`<li>${esc(x)}</li>`).join("")}</ol>`:""}
+  ${plan?`<div class="train"><h4>Training plan</h4><p>${esc(r.training_focus||"")}</p><ul>${plan}</ul><p class="fine">${esc((s.payload&&s.payload.training_disclaimer)||"")}</p></div>`:""}`;
+}
+
+/* ---------- coach chat (POST /api/chat, served by api/server.py) ---------- */
+let chatHist=[];
+function chatLine(cls,text){const p=document.createElement("p");p.className=cls;p.textContent=text;$("#chatLog").append(p);$("#chatLog").scrollTop=1e9;return p}
+function resetChat(){chatHist=[];$("#chatLog").innerHTML="";$("#chatQ").disabled=!(REC&&REC.payload)}
+$("#chatForm").onsubmit=async e=>{e.preventDefault();const q=$("#chatQ").value.trim();if(!q||!REC||!REC.payload)return;
+  $("#chatQ").value="";chatLine("q",q);const wait=chatLine("a","…");
+  try{const r=await fetch("api/chat",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({payload:REC.payload,history:chatHist,question:q})});
+    if(!r.ok)throw new Error(r.status);const d=await r.json();wait.textContent=d.answer;
+    if((d.unsupported_numbers||[]).length)chatLine("fine","Check: "+d.unsupported_numbers.join(", ")+" not found in this swing's measurements.");
+    chatHist.push({role:"user",text:q},{role:"model",text:d.answer})}
+  catch(err){wait.textContent="The chat needs the SwingLab server: run  python api\\server.py  and open the viewer from it."}};
+
+/* ---------- kinematic sequence chart ---------- */
+let cursor=null, xs=()=>0;
+function renderChart(){
+  const s=REC,W=560,H=240,L=50,Rm=40,T=24,B=30;
+  const t0=Math.max(s.time[0],s.events.load-0.1),t1=Math.min(s.time.at(-1),s.events.contact+0.15);
+  xs=tt=>L+(tt-t0)/((t1-t0)||1)*(W-L-Rm);
+  const inWin=(arr)=>s.time.map((tt,i)=>tt>=t0&&tt<=t1?arr[i]:null).filter(v=>v!=null);
+  const pv=s.series.pelvis_vel,tv=s.series.torso_vel,hs=s.series.hand_speed;
+  const ymax=Math.max(500,Math.ceil(Math.max(...inWin(tv),...inWin(pv))/500)*500), ys=v=>T+(1-Math.max(0,Math.min(v,ymax))/ymax)*(H-T-B);
+  const hmax=Math.max(2,Math.ceil(Math.max(...inWin(hs))/2)*2), hy=v=>T+(1-Math.min(v,hmax)/hmax)*(H-T-B);
+  const pts=(arr,f)=>s.time.map((tt,i)=>tt>=t0&&tt<=t1?`${xs(tt).toFixed(1)},${f(arr[i]).toFixed(1)}`:null).filter(Boolean).join(" ");
+  const step=ymax/4;let g="";for(let v=0;v<=ymax;v+=step){g+=`<line x1="${L}" x2="${W-Rm}" y1="${ys(v)}" y2="${ys(v)}" stroke="var(--line)"/><text x="${L-6}" y="${ys(v)+4}" text-anchor="end">${Math.round(v)}</text>`}
+  for(let v=0;v<=hmax;v+=hmax/4)g+=`<text x="${W-Rm+6}" y="${hy(v)+4}">${+v.toFixed(1)}</text>`;
+  const ev=["foot_plant","contact"].map(k=>`<line x1="${xs(s.events[k])}" x2="${xs(s.events[k])}" y1="${T}" y2="${H-B}" stroke="var(--muted)" stroke-dasharray="3 3"/><text x="${xs(s.events[k])}" y="${H-10}" text-anchor="middle">${PHASE_LABEL[k]}</text>`).join("");
+  $("#chart").innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Hip, chest and hand speed over time">
+   <text x="${L-6}" y="12" text-anchor="end">°/s</text><text x="${W-Rm+6}" y="12">m/s</text>${g}${ev}
+   <polyline fill="none" stroke="var(--pelvis)" stroke-width="2" points="${pts(pv,ys)}"/>
+   <polyline fill="none" stroke="var(--torso)" stroke-width="2" points="${pts(tv,ys)}"/>
+   <polyline fill="none" stroke="var(--hands)" stroke-width="2" stroke-dasharray="5 3" points="${pts(hs,hy)}"/>
+   <g id="cur"><line y1="${T}" y2="${H-B}" stroke="var(--ink)" stroke-width="1"/></g></svg>`;
+  cursor=$("#cur");
+}
+
+/* ---------- measurements ---------- */
+const UNIT={deg:"°","deg/s":"°/s",ms:"ms","m/s":"m/s"};
+function fmtF(k,v){const f=APP.feature_info[k]||{};if(v==null||!isFinite(v))return"–";
+  if(f.unit==="bool")return v?"yes":"no";
+  if(f.pct_height)return `${(v*100).toFixed(1)}<small> % of height</small>`;
+  if(f.unit==="ratio")return `${v.toFixed(2)}<small>×</small>`;
+  const d=f.unit==="m/s"?1:0;return `${v.toFixed(d)}<small> ${UNIT[f.unit]||f.unit}</small>`}
+const DIR={higher:"↑ more is better",lower:"↓ less is better",range:"aim for the green band"};
+function renderTable(){
+  const s=REC,F=APP.feature_info,focus=s.analysis&&s.analysis.focus&&s.analysis.focus.feature,G=APP.groups||{};
+  let h=`<tr><th>Measurement</th><th style="text-align:right">You</th><th style="text-align:right">Top third</th><th style="width:34%">vs. lab hitters</th></tr>`;
+  GROUPS.forEach(g=>{h+=`<tr class="grp"><td colspan="4">${esc((G[g]||{}).label||GLAB[g])} <span>${esc((G[g]||{}).help||"")}</span></td></tr>`;
+    Object.entries(F).filter(([k,f])=>f.group===g&&f.unit!=="bool").forEach(([k,f])=>{
+      const q=APP.population[k],v=s.features[k];if(!q)return;
+      const P=x=>10+80*(x-q[0])/((q[4]-q[0])||1),raw=P(v),pos=Math.max(1,Math.min(99,raw));
+      const tg=APP.target&&APP.target[k],band=tg?`<u style="left:${Math.max(0,Math.min(P(tg[0]),P(tg[2])))}%;width:${Math.max(2,Math.abs(P(tg[2])-P(tg[0])))}%"></u>`:"";
+      const out=raw<0?`<em style="left:0">◀ below lab range</em>`:raw>100?`<em style="right:0">above lab range ▶</em>`:"";
+      h+=`<tr class="${k===focus?"focus":""}"><td><b>${esc(f.label)}</b>${k===focus?' <span class="badge">focus</span>':""}<span class="what">${esc(f.help||"")}</span><span class="dir">${DIR[f.better]||""}</span></td>
+        <td class="n">${fmtF(k,v)}</td><td class="n">${fmtF(k,tg?tg[1]:q[2])}</td>
+        <td><div class="range" title="lab 10–90%: ${q[0]} to ${q[4]}">${band}<i></i><b class="${raw<0||raw>100?"out":""}" style="left:${pos}%"></b>${out}</div></td></tr>`})});
+  $("#meas").innerHTML=h;
+}
+
+/* ---------- progress ---------- */
+function lineChart(el,series,{ymin=0,ymax=100,unit=""}={}){
+  const W=640,H=200,L=36,R=12,T=12,B=26,n=SWINGS.length,X=i=>L+(n<=1?0.5:i/(n-1))*(W-L-R),Y=v=>T+(1-(v-ymin)/((ymax-ymin)||1))*(H-T-B);
+  let g="";for(let k=0;k<=4;k++){const v=ymin+(ymax-ymin)*k/4;g+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L-6}" y="${Y(v)+4}" text-anchor="end">${Math.round(v)}</text>`}
+  SWINGS.forEach((s,i)=>{if(n<=12||i%Math.ceil(n/12)===0)g+=`<text x="${X(i)}" y="${H-8}" text-anchor="middle">${i+1}</text>`});
+  for(const {vals,color,dash} of series){const pts=vals.map((v,i)=>v==null?null:[X(i),Y(v)]);
+    const segs=[];let cur=[];pts.forEach(p=>{if(p)cur.push(p);else if(cur.length){segs.push(cur);cur=[]}});if(cur.length)segs.push(cur);
+    segs.forEach(sg=>g+=`<polyline fill="none" stroke="${color}" stroke-width="2" ${dash?'stroke-dasharray="5 3"':""} points="${sg.map(p=>p.join(",")).join(" ")}"/>`);
+    pts.forEach((p,i)=>{if(p)g+=`<circle cx="${p[0]}" cy="${p[1]}" r="${i===SI?5:3}" fill="${color}" style="cursor:pointer" data-i="${i}"><title>swing ${i+1}: ${vals[i]}${unit}</title></circle>`})}
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img">${g}</svg>`;
+  el.querySelectorAll("circle").forEach(c=>c.onclick=()=>{tab("swing");selectSwing(+c.dataset.i)});
+}
+function renderProgress(){
+  if(!SWINGS.length)return;const sc=k=>SWINGS.map(s=>(s.scores||{})[k]??null);
+  lineChart($("#pchart"),[{vals:sc("overall"),color:"var(--ink)"},{vals:sc("form"),color:"var(--pelvis)"},{vals:sc("contact"),color:"var(--good)"}]);
+  const bp=SWINGS.map(s=>s.bat_speed_predicted),bm=SWINGS.map(s=>s.bat_speed_measured??null),all=[...bp,...bm].filter(v=>v!=null);
+  lineChart($("#bchart"),[{vals:bp,color:"var(--hands)"},{vals:bm,color:"var(--seam)",dash:true}],{ymin:Math.floor((Math.min(...all,60)-5)/5)*5,ymax:Math.ceil((Math.max(...all,70)+5)/5)*5,unit:" mph"});
+  const f=sc("form").filter(v=>v!=null),c=sc("contact").filter(v=>v!=null),avg=a=>a.length?Math.round(a.reduce((x,y)=>x+y,0)/a.length):"–";
+  const third=Math.max(1,Math.floor(f.length/3)),first=avg(f.slice(0,third)),lastv=avg(f.slice(-third));
+  $("#ptiles").innerHTML=`<div><div class="k">Swings</div><div class="v">${SWINGS.length}</div></div><div><div class="k">Average form</div><div class="v">${avg(f)}</div></div>
+   <div><div class="k">Best form</div><div class="v">${f.length?Math.round(Math.max(...f)):"–"}</div></div><div><div class="k">Form, first → last third</div><div class="v">${first} → ${lastv}</div></div>
+   <div><div class="k">Average contact (hits)</div><div class="v">${avg(c)}</div></div><div><div class="k">Hits / misses / dry</div><div class="v">${SWINGS.filter(s=>s.mode==="hit").length} / ${SWINGS.filter(s=>s.mode==="miss").length} / ${SWINGS.filter(s=>s.mode==="dry").length}</div></div>`;
+  $("#ptable").innerHTML=`<tr><th>#</th><th>When</th><th>Type</th><th style="text-align:right">Overall</th><th style="text-align:right">Form</th><th style="text-align:right">Contact</th><th style="text-align:right">Bat speed</th><th>Coach</th></tr>`+
+    SWINGS.map((s,i)=>`<tr data-i="${i}"><td>${i+1}</td><td>${esc(fmtWhen(s.recorded_at))}</td><td><span class="mode ${esc(s.mode)}">${esc(MODE_LABEL[s.mode]||s.mode)}</span></td><td class="n">${num(s.scores.overall)}</td><td class="n">${num(s.scores.form)}</td><td class="n">${num(s.scores.contact)}</td><td class="n">${s.bat_speed_measured??(s.bat_speed_predicted!=null?s.bat_speed_predicted+" (pred.)":"–")}</td><td>${esc(s.headline||"")}</td></tr>`).join("");
+  $("#ptable").querySelectorAll("tr[data-i]").forEach(r=>r.onclick=()=>{tab("swing");selectSwing(+r.dataset.i)});
+}
+
+/* ---------- pipeline status ---------- */
+function renderStatus(){
+  const st=APP.status;if(!st){$("#status").innerHTML=`<div class="panel">No status yet (run scripts/export_demo.py).</div>`;return}
+  const cv=st.cv.cv,e=st.events;
+  const row=(k,lab)=>{const c=cv[k];return `<tr><td>${lab}</td>${["covariates","mechanics","both"].map(x=>`<td class="n">${c[x].ridge.r2.toFixed(2)}</td>`).join("")}<td class="n">±${c.both.ridge.mae}</td><td class="n">±${c.both.baseline_mean_mae}</td></tr>`};
+  const items=[
+   ["ok","Driveline data downloads and loads","677 swings, 98 hitters, checksums verified"],
+   ["ok","Lab skeleton matches Driveline's own numbers","pelvis speed r≈0.9, lead-knee bend r≈0.99"],
+   ["ok",`Event detection (${e.n} swings at 30 fps)`,`contact within 50 ms: ${Math.round(e.contact_within_50ms*100)}% · foot plant within 50 ms: ${Math.round(e.fp_within_50ms*100)}%`],
+   ["ok","Models trained, athlete-grouped cross-validation","see table"],
+   ["ok","Automated tests",st.tests],
+   ["ok","Hit vs dry swing, decided automatically","ball seen leaving the tee (slow-motion clip, else the LiDAR phone's video) → hit with a contact score; else form only"],
+   ["ok","Coach report with template fallback","every number checked against the measurements; Gemini: 20 calls per model per day on the free tier"],
+   ["ok","MediaPipe pose on real phone video","Record3D night test frames: person found in every frame"],
+   ["wait","Phone LiDAR capture on a real field swing","night tests only so far: arms often without depth"],
+   ["ok","Recording quality checks","bone lengths, framing, joints estimated without depth"],
+   ["ok","Annotated video, synced with the 3D replay","lab, synthetic and real night clips"],
+   ["wait","Bat and ball speed on real 240 fps video","within ~1% on synthetic clips"],
+   ["ok","Profiles, upload page and coach chat","python api\\server.py"],
+   ["no","Rotation angles vs. Driveline for left-handed hitters","speeds agree, static angles don't; open issue"],
+  ];
+  $("#status").innerHTML=`<div class="panel"><h2>Checks</h2>${items.map(([c,a,b])=>`<div class="check"><span class="pill ${c}">${c==="ok"?"PASS":c==="wait"?"NEXT":"OPEN"}</span><div>${esc(a)}<small>${esc(b)}</small></div></div>`).join("")}</div>
+  <div class="panel"><h2>Model accuracy</h2><div class="tbl"><table class="plain"><tr><th>Target</th><th style="text-align:right">Size only R²</th><th style="text-align:right">Mechanics R²</th><th style="text-align:right">Both R²</th><th style="text-align:right">Error</th><th style="text-align:right">Guess-avg error</th></tr>${row("bat_speed","Bat speed")}${row("exit_velo","Exit velocity")}</table></div>
+  <p class="note">Lab swings recorded at 360 Hz are replayed at 30 fps before any measurement, so training sees what the phone will see. No hitter appears in both training and test folds.</p></div>`;
+}
+
+/* ---------- profile create / edit / delete ---------- */
+const dlg=$("#profDlg"), form=$("#profForm");let editing=null;
+function openProfile(p){editing=p||null;$("#profDlgTitle").textContent=p?`Edit ${p.name}`:"New hitter";$("#profErr").textContent="";
+  form.name.value=p?p.name:"";form.bats.value=p?p.bats||"R":"R";form.level.value=p?p.level||"college":"college";
+  form.height_cm.value=p&&p.height_m?Math.round(p.height_m*1000)/10:"";form.mass_kg.value=p&&p.mass_kg?p.mass_kg:"";form.age.value=p&&p.age?p.age:"";dlg.showModal()}
+$("#profSave").onclick=async e=>{e.preventDefault();if(!form.reportValidity())return;
+  const body={name:form.name.value.trim(),bats:form.bats.value,level:form.level.value,height_m:+form.height_cm.value/100,
+    mass_kg:form.mass_kg.value?+form.mass_kg.value:null,age:form.age.value?+form.age.value:null};
+  const r=await fetch(editing?`api/profiles/${editing.id}`:"api/profiles",{method:editing?"PUT":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const d=await r.json();if(!r.ok){$("#profErr").textContent=d.error||d.detail||"Could not save";return}
+  dlg.close();await loadProfiles();PID=null;go(`#hitter/${d.id}`);toast(editing?"Profile saved":"Hitter created")};
+async function deleteProfile(p){
+  if(!confirm(`Delete the profile ${p.name}? Its ${p.n_swings} swing(s) are moved to userdata/trash, not destroyed.`))return;
+  const r=await fetch(`api/profiles/${p.id}`,{method:"DELETE"});if(!r.ok){toast("Could not delete");return}
+  await loadProfiles();PID=null;go("#home");toast(`Deleted ${p.name}`)}
+
+/* ---------- upload: drag and drop here, or from a phone (QR code) ---------- */
+const upDlg=$("#upDlg");let upFiles=[], INFO=null;
+const KIND=n=>/\.(r3d|zip)$/i.test(n)?"LiDAR recording":/yardstick/i.test(n)?"yardstick (scale) clip":/\.(mov|mp4|m4v)$/i.test(n)?"slow-motion clip":"not a recording";
+function fmtMB(b){return b>1e6?`${(b/1e6).toFixed(1)} MB`:`${Math.round(b/1e3)} KB`}
+function renderUpList(){$("#upList").innerHTML=upFiles.map(f=>`<li><span>${esc(f.name)}</span><small>${esc(KIND(f.name))} · ${fmtMB(f.size)}</small></li>`).join("");$("#upGo").disabled=!upFiles.length}
+async function openUpload(){
+  if(!SERVED){toast("Uploading needs the SwingLab server: python api\\server.py");return}
+  const real=PROFILES.filter(p=>!p.synthetic);
+  if(!real.length){toast("Create a hitter first");openProfile(null);return}
+  $("#upHitter").innerHTML=real.map(p=>`<option value="${esc(p.name)}" ${p.id===PID?"selected":""}>${esc(p.name)}</option>`).join("");
+  upFiles=[];renderUpList();$("#upMsg").textContent="";$("#upMsg").className="upmsg";$("#upBar").hidden=true;
+  try{INFO=INFO||await fetch("api/info").then(r=>r.json())}catch(e){}
+  const hint=()=>{const p=real.find(x=>x.name===$("#upHitter").value);$("#upDropHint").textContent=p&&p.drop_folder?`On this laptop you can also copy files into ${p.drop_folder}`:""};
+  $("#upHitter").onchange=hint;hint();
+  if(INFO){$("#upPhone").hidden=false;$("#upPhoneUrl").textContent=INFO.phone_upload_url;$("#upPhoneUrl").href=INFO.phone_upload_url;
+    $("#qr").innerHTML="";if(window.QRCode)new QRCode($("#qr"),{text:INFO.phone_upload_url,width:96,height:96,colorDark:"#0C2340",colorLight:"#ffffff"})}
+  upDlg.showModal()}
+$("#uploadBtn").onclick=openUpload;
+const drop=$("#upDrop");
+drop.onclick=()=>$("#upFiles").click();drop.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("#upFiles").click()}};
+$("#upFiles").onchange=e=>{upFiles=[...e.target.files];renderUpList()};
+["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over")}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over")}));
+drop.addEventListener("drop",e=>{upFiles=[...e.dataTransfer.files];renderUpList()});
+$("#upGo").onclick=e=>{e.preventDefault();if(!upFiles.length)return;
+  const bad=upFiles.filter(f=>KIND(f.name)==="not a recording");if(bad.length){$("#upMsg").className="upmsg err";$("#upMsg").textContent=`${bad[0].name} is not a recording or a video`;return}
+  const fd=new FormData();upFiles.forEach(f=>fd.append("files",f));fd.append("hitter",$("#upHitter").value);fd.append("kind","auto");
+  const x=new XMLHttpRequest();x.open("POST","api/upload");$("#upBar").hidden=false;$("#upGo").disabled=true;
+  x.upload.onprogress=ev=>{if(ev.lengthComputable)$("#upBar i").style.width=(100*ev.loaded/ev.total)+"%"};
+  x.onload=()=>{let d={};try{d=JSON.parse(x.responseText)}catch(err){}
+    if(x.status===200){$("#upMsg").className="upmsg ok";$("#upMsg").textContent=`Uploaded ${d.saved.length} file(s) for ${d.hitter||d.session}. Analysis starts in ${d.processing_in_s} s; the swing opens here when it is done (about a minute).`;
+      upFiles=[];renderUpList();$("#live").checked=true}
+    else{$("#upMsg").className="upmsg err";$("#upMsg").textContent=d.error||("Upload failed ("+x.status+")");$("#upGo").disabled=false}};
+  x.onerror=()=>{$("#upMsg").className="upmsg err";$("#upMsg").textContent="Upload failed: is the server still running?";$("#upGo").disabled=false};
+  x.send(fd)};
+
+/* ---------- live: show new swings as soon as they are analyzed ---------- */
+function toast(msg){const el=$("#toast");el.textContent=msg;el.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove("show"),3500)}
+let lastSeen=null;
+async function pollLatest(){
+  if(!SERVED)return;
+  try{const d=await fetch("api/latest").then(r=>r.json());$("#liveDot").classList.add("on");
+    if(lastSeen===null){lastSeen=d.modified||0;return}
+    if(d.profile&&d.modified>lastSeen){lastSeen=d.modified;await loadProfiles();
+      const p=PROFILES.find(x=>x.id===d.profile);
+      if($("#live").checked){if(upDlg.open)upDlg.close();PID=null;go(`#hitter/${d.profile}`);await selectProfile(d.profile,d.file);tab("swing");toast(`New swing analyzed for ${p?p.name:d.profile}`)}
+      else{if(!$("#view-home").hidden)renderHome();toast(`New swing for ${p?p.name:d.profile}`)}}}
+  catch(e){$("#liveDot").classList.remove("on")}}
+setInterval(pollLatest,4000);
+
+/* ---------- start ---------- */
+buildScene();placeCam();renderStatus();requestAnimationFrame(loop);
+$("#liveWrap").hidden=!SERVED;$("#uploadBtn").hidden=!SERVED;
+await loadProfiles();
+if(EMB&&!location.hash&&PROFILES[0])location.hash=`#hitter/${PROFILES[0].id}`;   // the single-file viewer opens on its only profile
+await route();
+pollLatest();
+})();
+</script>
+</body>
+</html>
