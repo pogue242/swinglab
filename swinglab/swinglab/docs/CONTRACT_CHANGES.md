@@ -36,6 +36,12 @@ Other additions:
   not read either.
 
 ## Requested by UI
+- 2026-10-11 (after re-analyzing Adam with func/scoring): swing 1 is `window.partial` and its warning says
+  "stance, stride and timing numbers for this swing are unreliable", yet its **focus is stance width** and the
+  headline is "Work on: stance width". Please skip measurements the swing's own warnings call unreliable when
+  choosing the focus. Also `mode_evidence` carries the full local path of the missing YOLOX model; users see
+  that text in the "data notes" popover, so a short "ball detector not installed: treated as a dry swing" would
+  read better (the path can go in the log).
 - 2026-10-11 (bug, FUNC side): swing JSON files contain bare `NaN` (e.g. `"...r_pelvis":NaN`), which is not
   valid JSON; browsers refuse the file. Seen in Adam's swings 1 and 2 of 3 (`Adam__2026-10-10--22-25-12-01/-02`).
   The viewer now reads NaN/Infinity as null, but please write `null` (`json.dumps(..., allow_nan=False)` after
