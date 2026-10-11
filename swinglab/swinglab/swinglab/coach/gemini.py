@@ -28,7 +28,7 @@ from pathlib import Path
 
 from .. import config  # noqa: F401  (loads .env: GEMINI_API_KEY, GEMINI_MODEL)
 from . import cues, numbers
-from .schemas import SessionReport, SwingReport, VideoRead
+from .schemas import BlindRating, SessionReport, SwingReport, VideoRead
 
 PROMPTS = Path(__file__).parent / "prompts"
 DEFAULT_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
@@ -115,19 +115,61 @@ def validate_plan(rep: SwingReport, payload: dict) -> tuple[SwingReport, list[st
     return rep.model_copy(update={"training_plan": kept[:5]}), dropped
 
 
-def report(payload: dict, *, client=None, model: str = DEFAULT_MODEL) -> tuple[SwingReport, dict]:
-    """Return (report, info). info["source"] is "gemini" or "template"."""
+VIDEO_FPS = 24      # frames per second Gemini samples from a clip (the API's maximum; default would be 1)
+
+
+def upload_video(client, path: str | Path):
+    """Upload a clip and wait until Gemini has processed it. Returns the file handle (delete it when done)."""
+    f = client.files.upload(file=str(path))
+    for _ in range(90):
+        if getattr(f.state, "name", str(f.state)) != "PROCESSING":
+            break
+        time.sleep(1)
+        f = client.files.get(name=f.name)
+    if getattr(f.state, "name", str(f.state)) == "FAILED":
+        raise RuntimeError("Gemini could not process the video")
+    return f
+
+
+def _video_part(f):
+    from google.genai import types
+    return types.Part(file_data=types.FileData(file_uri=f.uri, mime_type=getattr(f, "mime_type", None) or "video/mp4"),
+                      video_metadata=types.VideoMetadata(fps=VIDEO_FPS))
+
+
+def blind_rating(video, *, client=None, model: str = DEFAULT_MODEL) -> tuple[BlindRating | None, dict]:
+    """The AI coach's Explosiveness rating from the video ALONE (no numbers: with numbers it anchors on them;
+    tested 2026-10-11 on TestSet2, where blind it ranked Matteo above Wilson in 3 of 3 runs, like the team).
+    ``video``: a clip path or an uploaded file handle (upload_video). Never raises."""
+    client = client if client is not None else _client()
+    if client is None:
+        return None, {"source": "none", "reason": "no GEMINI_API_KEY"}
+    t0 = time.time()
+    try:
+        f = upload_video(client, video) if isinstance(video, (str, Path)) else video
+        resp, used = _generate(client, model, contents=[_video_part(f), "Rate this swing."],
+                               config=_config(_prompt("blind"), BlindRating))
+        r = resp.parsed if isinstance(resp.parsed, BlindRating) else BlindRating.model_validate_json(resp.text)
+        return unescape(r), _info(resp, used, seconds=round(time.time() - t0, 2))
+    except Exception as e:
+        return None, {"source": "none", "reason": f"{type(e).__name__}: {e}"[:300]}
+
+
+def report(payload: dict, *, client=None, model: str = DEFAULT_MODEL, video=None) -> tuple[SwingReport, dict]:
+    """Return (report, info). info["source"] is "gemini" or "template". ``video``: an uploaded clip
+    (upload_video) the coach watches alongside the numbers."""
     client = client if client is not None else _client()
     t0 = time.time()
     if client is None:
         return cues.report(payload), {"source": "template", "reason": "no GEMINI_API_KEY"}
     try:
-        resp, used = _generate(client, model, contents=json.dumps(payload),
+        contents = [_video_part(video), json.dumps(payload)] if video is not None else json.dumps(payload)
+        resp, used = _generate(client, model, contents=contents,
                                config=_config(_prompt("report"), SwingReport))
         rep = resp.parsed if isinstance(resp.parsed, SwingReport) else SwingReport.model_validate_json(resp.text)
         rep = unescape(rep)
         rep, dropped = validate_plan(rep, payload)
-        info = _info(resp, used, seconds=round(time.time() - t0, 2))
+        info = _info(resp, used, seconds=round(time.time() - t0, 2), video=video is not None)
         if dropped:
             info["dropped_exercises"] = dropped
         bad = numbers.unsupported(rep, payload)

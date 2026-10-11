@@ -108,7 +108,7 @@ def test_phone_upload_to_viewer_end_to_end(tmp_path):
     from swinglab import pipeline
     from test_pipeline import H, W, render_stray, write_ball_video
     from test_quality import rigid_swing
-    t, J = rigid_swing()
+    t, J = rigid_swing(hip_rate=1000)      # fast enough to be found as a swing
     rec_dir = tmp_path / "rec"
     kps = render_stray(rec_dir, t, J)
     buf = io.BytesIO()

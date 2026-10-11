@@ -101,7 +101,8 @@ def lift_recording(folder: str | Path, *, pose_model: str | Path | None = None, 
     return cap.timestamps, joints, quality
 
 
-def analyze_joints(t: np.ndarray, joints: dict, hitter: dict, rec_id: str, quality: dict | None = None) -> dict:
+def analyze_joints(t: np.ndarray, joints: dict, hitter: dict, rec_id: str, quality: dict | None = None,
+                   partial: bool = False) -> dict:
     """World-frame joints for ONE swing -> full record (skeleton, events, features, scores)."""
     # a joint seen in too few frames would be one straight interpolated line (or NaN, which crashes smoothing)
     lr = skeleton.to_lead_rear(joints, hitter["bats"])
@@ -113,13 +114,15 @@ def analyze_joints(t: np.ndarray, joints: dict, hitter: dict, rec_id: str, quali
                          + f"; need {MIN_JOINT_COVERAGE:.0%}. Usually no depth on that body part (dark clothing, "
                          "fast motion, out of range) or it was hidden; check the pose overlay and check_recording.py")
     # resample to the SAME rate the model was trained at (config.PHONE_FPS)
-    sk = skeleton.build(t, joints, hitter["bats"], up=capture.WORLD_UP_ARKIT,
+    feet = tuple(e for e in skeleton.FOOT_EXTRAS if e in lr)
+    sk = skeleton.build(t, joints, hitter["bats"], up=capture.WORLD_UP_ARKIT, extras=feet,
                         height_m=float(hitter["height_m"]), fps=config.PHONE_FPS)
     s = K.series(sk)
     ev = K.detect_events(sk, s)
     f = features.compute(sk, ev, s)
     models, scorers = _models()
-    an = scoring.analyze(f, models, scorers, covariates(hitter))
+    an = scoring.analyze(f, models, scorers, covariates(hitter),
+                         unreliable=dict.fromkeys(scoring.NEEDS_STANCE, scoring.PARTIAL_REASON) if partial else None)
     quality = dict(quality or {})
     video = _video_for(quality.pop("_video", None), t)
     quality["bones"] = Q.bone_lengths(sk)
@@ -370,7 +373,8 @@ def decide_mode(rec: dict, *, detect=None) -> None:
                         ev = (f"LiDAR phone video: the blob tracker reported a {r['kind']}, but the ball detector "
                               f"found no ball near it in {chk['frames_checked']} frames before contact: dry swing")
             except FileNotFoundError as e:
-                kind, ev = "none", f"ball detector model missing ({e}): treated as a dry swing"
+                print(f"[ball check] {e}")                    # the path goes to the log, not to the user
+                kind, ev = "none", "ball detector not installed: treated as a dry swing"
             except Exception as e:
                 kind, ev = "none", f"could not check the video for a ball ({type(e).__name__}): treated as a dry swing"
     rec["mode"] = {"hit": "hit", "miss": "miss"}.get(kind, "dry")
@@ -507,17 +511,19 @@ def analyze_recording(lidar: str | Path | None, slowmo: str | Path | None, hitte
     for k, w in enumerate(wins or [None]):
         rid = Path(lidar).stem if len(wins) <= 1 else f"{Path(lidar).stem}-{k + 1:02d}"
         try:
-            ts, js = session.cut(t, joints, w) if w is not None else (t, joints)
-            r = analyze_joints(ts, js, hitter, rid, q)
-            if w is None:
-                r["warnings"].append("no complete swing found (hand speed and shoulder turn never reached a swing's; "
-                                     "the recording may start after the swing); analyzed the whole clip, numbers unreliable")
-            else:
-                r["window"] = asdict(w)
-                if w.partial:
-                    r["warnings"].append("the recording starts mid-swing: the stance and load were not filmed, so "
-                                         "stance, stride and timing numbers for this swing are unreliable")
+            if w is None:    # a score for a clip with no swing in it would mean nothing (TestSet2: Matteo 6 = a follow-through)
+                raise NoSwing("no complete swing found in this recording: hand speed and a shoulder turn toward the "
+                              "pitcher never reached a swing's (it may start after the swing, or the hitter is out of frame)")
+            ts, js = session.cut(t, joints, w)
+            r = analyze_joints(ts, js, hitter, rid, q, partial=bool(w.partial))
+            r["window"] = asdict(w)
+            if w.partial:
+                r["warnings"].append("the recording starts mid-swing: the stance and load were not filmed, so "
+                                     "stance, stride and timing numbers for this swing are unreliable")
             r["stages"] = {"lidar": {"ok": True, **r["quality"]}}
+        except NoSwing as e:
+            r = {"id": rid, "hitter": hitter.get("name", ""), "window": None, "no_swing": True,
+                 "stages": {"lidar": {"ok": False, "error": str(e)}}}
         except Exception as e:
             r = {"id": rid, "hitter": hitter.get("name", ""), "window": asdict(w) if w else None,
                  "stages": {"lidar": {"ok": False, "error": f"{type(e).__name__}: {e}", "trace": traceback.format_exc()[-800:]}}}
@@ -525,6 +531,7 @@ def analyze_recording(lidar: str | Path | None, slowmo: str | Path | None, hitte
         r["recording_t0"] = float(t[0])          # window times minus this = seconds into the recording's video
         recs.append(r)
     good = [r for r in recs if "analysis" in r]
+    rotate_focus(good)
     assigned, matching = {}, None
     if clips and good:
         by_index, matching = match_slowmo(lidar, good, clips, float(t[0]), **slow_kw)
@@ -555,13 +562,93 @@ def analyze_recording(lidar: str | Path | None, slowmo: str | Path | None, hitte
     return {"recs": recs, "summary": summary, "n_swings": len(wins)}
 
 
+class NoSwing(ValueError):
+    """The recording holds no complete swing."""
+
+
+def rotate_focus(recs: list[dict], min_swings: int = 3) -> None:
+    """When one factor is the focus of most swings in a recording (3+ and more than half), say it once as the
+    recording's recurring focus and coach each of those swings on its next-lowest factor instead, so the
+    feedback doesn't repeat ("front-leg block" on 9 of 12 TestSet2 swings)."""
+    from collections import Counter
+    from . import scoring
+    keys = [((r.get("analysis") or {}).get("focus") or {}).get("factor") for r in recs]
+    counts = Counter(k for k in keys if k)
+    if not counts:
+        return
+    top, n = counts.most_common(1)[0]
+    if n < min_swings or n <= len(recs) / 2:
+        return
+    for r, k in zip(recs, keys):
+        an = r["analysis"]
+        an["recurring_focus"] = {"factor": top, "label": next(f["label"] for f in an["elite"]["factors"] if f["key"] == top),
+                                 "swings": n, "of": len(recs)}
+        if k == top:
+            alt = scoring.elite_focus(an, skip=(top,))
+            if alt:
+                an["focus"] = alt
+
+
+def swing_clip(rec: dict, out_base: Path, *, height: int = 720) -> Path | None:
+    """A plain (no overlay) MP4 of this swing's frames from the recording's color video, for the AI coach."""
+    import cv2
+    from .render import open_writer
+    v = rec.get("video") or {}
+    if not v.get("path") or not v.get("frames"):
+        return None
+    writer = path = None
+    try:
+        for fr in read_frames(v["path"], *v["frames"]):
+            h, w = fr.shape[:2]
+            size = (int(round(w * height / h / 2)) * 2, height)
+            if writer is None:
+                writer, path, _ = open_writer(out_base, v.get("fps") or 60.0, size)
+            writer.write(cv2.resize(fr, size, interpolation=cv2.INTER_AREA))
+    finally:
+        if writer is not None:
+            writer.release()
+    return path
+
+
 def _coach(rec: dict, hitter: dict, measured: dict | None, use_gemini: bool, *, template_reason: str = "disabled") -> None:
-    """Payload + report (Gemini or template) for an analyzed swing record."""
+    """Payload + report (Gemini or template) for an analyzed swing record. With Gemini and a video: the swing
+    clip is uploaded once; the AI coach first rates it blind (Explosiveness factor, before any numbers, so it
+    doesn't anchor on them), then writes the report from the numbers AND the video."""
+    import tempfile
+    from . import scoring
     from .coach import cues, gemini, payload
-    pl = payload.build(rec["analysis"], rec["features"], {"name": hitter.get("name", ""), "bats": hitter["bats"],
-                                                          "height_m": float(hitter["height_m"]),
-                                                          "level": hitter.get("level", "college")}, measured=measured)
-    rep, info = gemini.report(pl) if use_gemini else (cues.report(pl), {"source": "template", "reason": template_reason})
+    client = gemini._client() if use_gemini else None
+    fh, blind, tmp = None, None, None
+    if client is not None and rec.get("video"):
+        try:
+            tmp = tempfile.TemporaryDirectory(prefix="swinglab_clip_")
+            clip = swing_clip(rec, Path(tmp.name) / "swing")
+            fh = gemini.upload_video(client, clip) if clip else None
+        except Exception as e:
+            rec.setdefault("stages", {})["coach_video"] = {"ok": False, "error": f"{type(e).__name__}: {e}"[:300]}
+    try:
+        if fh is not None:
+            blind, binfo = gemini.blind_rating(fh, client=client)
+            rec.setdefault("stages", {})["coach_video"] = {"ok": blind is not None,
+                                                           **{k: v for k, v in binfo.items() if k in ("model", "reason", "seconds")}}
+            if blind is not None:
+                rec["blind_look"] = blind.model_dump()
+                scoring.with_ai_rating(rec["analysis"], blind.rating, blind.standout, binfo)
+        pl = payload.build(rec["analysis"], rec["features"], {"name": hitter.get("name", ""), "bats": hitter["bats"],
+                                                              "height_m": float(hitter["height_m"]),
+                                                              "level": hitter.get("level", "college")}, measured=measured)
+        if blind is not None:
+            pl["blind_look"] = {k: v for k, v in blind.model_dump().items() if k != "rating"}
+        rep, info = (gemini.report(pl, client=client, video=fh) if client is not None
+                     else (cues.report(pl), {"source": "template", "reason": template_reason if not use_gemini else "no GEMINI_API_KEY"}))
+    finally:
+        if fh is not None:
+            try:
+                client.files.delete(name=fh.name)
+            except Exception:
+                pass
+        if tmp is not None:
+            tmp.cleanup()
     rec.update(payload=pl, report=rep.model_dump(), report_source=info)
     rec.setdefault("stages", {})["coach"] = {"ok": True, **{k: v for k, v in info.items() if k in ("source", "reason", "seconds", "model")}}
 

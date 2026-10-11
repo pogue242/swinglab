@@ -41,6 +41,14 @@ TEMPLATES = {
                               Drill(name="Head-still tee work", steps=["Partner holds a hand near your head", "Swing without touching it"]), "overlay"),
     "hips_drift_fp_contact": ("Your hips slide forward", "Turn your hips, don't slide them",
                               Drill(name="Back-knee-to-ball", steps=["Turn so your back knee points at the ball", "Keep your weight centered"]), "overlay"),
+    "torso_turn_total": ("Turn your shoulders all the way through", "Finish with your chest facing the pitcher",
+                         Drill(name="Turn-through finishes", steps=["Swing at 70% effort", "Hold the finish with your back shoulder pointing at the pitcher"]), "overlay"),
+    "pelvis_turn_total": ("Let your hips turn through", "Belt buckle to the pitcher at the finish",
+                          Drill(name="Hip-turn holds", steps=["Bat across your hips", "Turn until your belt buckle faces the pitcher, hold 2 s"]), "overlay"),
+    "drive_speed": ("Drive with your legs into the stride", "Push off the back leg as you step",
+                    Drill(name="Step-and-drive swings", steps=["Start with weight on the back leg", "Push forward into the stride, then swing"]), "overlay"),
+    "rear_foot_turn": ("Turn your back foot", "Squash the bug: back heel up and out",
+                       Drill(name="Back-heel turns", steps=["Dry swing slowly", "Finish on the ball of your back foot, heel toward the sky"]), "overlay"),
 }
 DEFAULT = ("Solid swing overall", "Repeat this swing and stay smooth",
            Drill(name="Tee repetitions", steps=["Ten swings at 80% effort", "Focus on a balanced finish"]), "scores")
@@ -53,13 +61,23 @@ def report(payload: dict) -> SwingReport:
     if name and name not in TEMPLATES:
         headline = f"Work on: {f.get('label', name).lower()}"
     s = payload["scores_0_100"]
-    what = (f"Your form scores: power {s['power']:.0f}, sequencing {s['transfer']:.0f}, posture {s['posture']:.0f} "
-            f"(percentiles vs. Driveline lab swings).")
+    el = payload.get("elite_match")
+    if el and el.get("match_percent") is not None:
+        what = (f"Your elite match is {el['match_percent']:.0f}%, with {el['at_elite']} of {el['factors_judged']} "
+                f"factors at elite level.")
+    else:
+        parts = [f"{lab} {s[k]:.0f}" for k, lab in (("power", "power"), ("transfer", "sequencing"), ("posture", "posture"))
+                 if s.get(k) is not None]
+        what = f"Your form scores: {', '.join(parts)} (graded against Driveline lab swings)."
     if f:
-        what += f" {f['label']}: {f['value']:g} {f['unit']} vs. about {f['typical']:g} for a typical lab hitter."
+        typ = f.get("typical")
+        typ = f"{typ:g}" if isinstance(typ, (int, float)) else str(typ)
+        what += f" {f['label']}: {f['value']:g} {f['unit']} vs. {typ} for elite hitters."
+    mph = f.get("effect_mph") if f else None
     why = (f"In the lab data, hitters your size with values like this tended to swing about "
-           f"{abs(f['effect_mph']):.1f} mph {'slower' if f['effect_mph'] < 0 else 'faster'}." if f else
-           "No single area stands out as holding you back.")
+           f"{abs(mph):.1f} mph {'slower' if mph < 0 else 'faster'}." if mph is not None else
+           f"Elite hitters do this better: it's your lowest factor ({f.get('factor_label', f.get('label', ''))})."
+           if f else "No single area stands out as holding you back.")
     plan, kinds = [], set()
     for o in payload.get("exercise_options", []):  # one of each kind first (power, strength, mobility, drill)
         if o["kind"] not in kinds and len(plan) < 4:

@@ -44,7 +44,28 @@ FEATURES = {
     "hips_drift_fp_contact": ("posture", "Hips slide toward the pitcher, plant → contact", "ratio"),
     "hands_forward_contact": ("posture", "Hands out in front at contact", "ratio"),
 }
+# Measurements used only by the elite-match factors (scoring.FACTORS), not by the lab models (model.MECHANICS):
+# picked 2026-10-11 by how well they separate the lab's top third (size-adjusted bat speed) from the rest.
+FACTOR_FEATURES = {
+    "torso_turn_total": ("Shoulder turn, coil to finish", "deg"),
+    "pelvis_turn_total": ("Hip turn, coil to finish", "deg"),
+    "drive_speed": ("Forward drive into foot plant", "heights/s"),
+    "rear_foot_turn": ("Back foot turn by just after contact", "deg"),
+}
+FACTOR_FEATURE_HELP = {
+    "torso_turn_total": "How far your shoulders rotate from their most coiled point to the finish.",
+    "pelvis_turn_total": "How far your hips rotate from their most coiled point to the finish.",
+    "drive_speed": "Top speed of your hips moving toward the pitcher during the stride, in body heights per second: "
+                   "the legs pushing the body forward before the front leg stops it.",
+    "rear_foot_turn": "How far your back foot (heel to toe) turns between the stance and just after contact: the back "
+                      "heel turning up and out as the back hip drives through.",
+}
 GROUPS = ("power", "transfer", "posture")
+
+
+def label(name: str) -> str:
+    """Plain-English label of any measurement (model feature or factor feature)."""
+    return (FEATURES.get(name) or ("", *FACTOR_FEATURES.get(name, (name, ""))))[1]
 # Shown by default in the swing view ("Key measurements"): the graded measurement with the largest weight
 # in each group (scoring.feature_weights) plus the next three; all graded, none in scoring.NOT_GRADED.
 KEY_FEATURES = ("hand_speed_peak", "torso_yaw_fp", "hands_forward_contact",
@@ -131,4 +152,29 @@ def compute(sk: Skeleton, ev: dict | None = None, s: dict | None = None) -> dict
     f["head_drift_fp_contact"] = float((sk["neck"][i_c, 0] - sk["neck"][i_fp, 0]) / h)
     f["hips_drift_fp_contact"] = float((sk.mid_hip[i_c, 0] - sk.mid_hip[i_fp, 0]) / h)
     f["hands_forward_contact"] = float((sk.mid_wrist[i_c, 0] - sk.mid_hip[i_c, 0]) / h)
+    f.update(factor_features(sk, ev, s, h))
+    return f
+
+
+def factor_features(sk: Skeleton, ev: dict, s: dict, h: float) -> dict[str, float]:
+    """FACTOR_FEATURES. Turns: largest yaw from foot plant to 0.3 s after contact minus the most coiled yaw
+    up to foot plant (total range: the phone's pose lags the turn, which ruins speeds and timing but not range)."""
+    fps = sk.fps
+    i_ld, i_fp, i_c = K.idx(sk, ev["load"]), K.idx(sk, ev["foot_plant"]), K.idx(sk, ev["contact"])
+    i_end = K.idx(sk, ev["contact"] + 0.3)
+    f = {}
+    for nm in ("torso", "pelvis"):
+        y = s[f"{nm}_yaw"]
+        f[f"{nm}_turn_total"] = float(np.nanmax(y[i_fp:i_end + 1]) - np.nanmin(y[: i_fp + 1]))
+    vx = np.gradient(K.smooth(sk.mid_hip, fps)[:, 0], 1 / fps)            # toward the pitcher, m/s
+    lo = max(0, i_ld - int(0.3 * fps))
+    f["drive_speed"] = float(np.nanmax(vx[lo:i_c + 1]) / h) if i_c >= lo else np.nan
+    f["rear_foot_turn"] = np.nan
+    if "rear_heel" in sk.extras and "rear_toe" in sk.extras:
+        v = sk.extras["rear_toe"] - sk.extras["rear_heel"]
+        yaw = np.degrees(np.unwrap(np.arctan2(v[:, 1], v[:, 0])))
+        w = slice(0, max(3, int(0.08 * len(sk.time))))
+        i_a = K.idx(sk, ev["contact"] + 0.1)
+        if np.isfinite(yaw[w]).any() and np.isfinite(yaw[i_a]):
+            f["rear_foot_turn"] = float(abs(yaw[i_a] - np.nanmedian(yaw[w])))
     return f

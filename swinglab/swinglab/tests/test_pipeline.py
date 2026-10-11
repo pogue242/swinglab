@@ -132,11 +132,13 @@ def test_long_clip_with_one_swing_is_single_and_short_clip_works(tmp_path):
     out = pipeline.analyze_recording(tmp_path / "one", None, hitter, use_gemini=False, keypoints_fn=lambda v: (kps, (W, H)))
     assert len(out["recs"]) == 1 and out["summary"] is None and "analysis" in out["recs"][0]
     assert out["recs"][0]["window"]["index"] == 1
-    # a motion too slow to be a swing: still analyzed as one clip, with a warning
+    # a motion too slow to be a swing: not scored (a score for a clip with no swing would mean nothing)
     t2, J2 = synthetic_swing(fps=30, T=4.0, smooth=True, hip_rate=500)
     kps2 = render_stray(tmp_path / "slow", t2, J2)
     out2 = pipeline.analyze_recording(tmp_path / "slow", None, hitter, use_gemini=False, keypoints_fn=lambda v: (kps2, (W, H)))
-    assert len(out2["recs"]) == 1 and any("no complete swing" in w for w in out2["recs"][0]["warnings"])
+    r2 = out2["recs"][0]
+    assert len(out2["recs"]) == 1 and "analysis" not in r2 and r2["no_swing"]
+    assert "no complete swing" in r2["stages"]["lidar"]["error"] and not r2["stages"]["lidar"]["ok"]
 
 
 def test_save_result_builds_index(tmp_path):

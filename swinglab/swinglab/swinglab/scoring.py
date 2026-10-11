@@ -95,6 +95,14 @@ class GroupScorer:
         return sorted(out, key=lambda d: d["effect_mph"])
 
 
+# A partial swing (the recording starts mid-swing: session.SwingWindow.partial) has no stance and
+# no reliable load or foot plant, so everything measured from them is skipped for that swing.
+NEEDS_STANCE = ("stance_width", "stride_length", "separation_fp", "separation_max", "pelvis_yaw_fp", "torso_yaw_fp",
+                "fp_to_contact_ms", "lead_knee_flex_fp", "lead_knee_extension", "head_drift_fp_contact",
+                "hips_drift_fp_contact", "seq_order_ok")
+PARTIAL_REASON = "the recording starts mid-swing: no stance, load or foot plant was filmed"
+
+
 def lab_ranges(tab: pd.DataFrame) -> dict[str, dict]:
     """Lab spread of every feature: {feature: {"p2.5", "p10", ..., "p97.5", "better"(, "share_yes")}}."""
     out = {}
@@ -145,15 +153,16 @@ def feature_weights(scorers: dict) -> dict[str, float]:
     return w
 
 
-def grade_swing(row: dict, scorers: dict, ranges: dict) -> dict:
+def grade_swing(row: dict, scorers: dict, ranges: dict, unreliable: dict | None = None) -> dict:
     """Per-feature grades and the three group scores: {"grades": {feature: {grade, weight, value,
     better, lab_p25, lab_median, lab_p75, label, unit}}, "scores": {group: 0–100 or None},
-    "not_graded": [{feature, label, reason}]}."""
+    "not_graded": [{feature, label, reason}]}. ``unreliable``: {feature: reason} skipped for this swing only."""
     w = feature_weights(scorers)
+    skip = {**NOT_GRADED, **(unreliable or {})}
     grades, groups, skipped = {}, {g: [] for g in GROUP_TARGET}, []
     for f, (grp, label, unit) in features.FEATURES.items():
-        if f in NOT_GRADED:
-            skipped.append({"feature": f, "label": label, "reason": NOT_GRADED[f]})
+        if f in skip:
+            skipped.append({"feature": f, "label": label, "reason": skip[f]})
             continue
         v = row.get(f)
         v = np.nan if v is None else float(v)
@@ -181,29 +190,75 @@ def fit_scorers(tab: pd.DataFrame) -> dict[str, GroupScorer]:
     return scorers
 
 
-def analyze(row: dict, models: dict, scorers: dict, covariates: dict, ranges: dict | None = None) -> dict:
-    """Full result for one swing: predictions, graded scores, focus, tree paths."""
+def analyze(row: dict, models: dict, scorers: dict, covariates: dict, ranges: dict | None = None,
+            unreliable: dict | None = None) -> dict:
+    """Full result for one swing: predictions, the elite-match review (elite.match), the older group grades,
+    focus, tree paths. ``unreliable``: {feature: reason} not judged (nor coached) for this swing, e.g.
+    NEEDS_STANCE on a partial swing.
+
+    scores.form = the ELITE MATCH headline (mean of the factor percents; see elite.py); power / transfer /
+    posture are the 2026-10-11 lab-range group grades, kept for the viewer until it shows the factors."""
+    from . import elite
     full = {**row, **covariates}
-    gs = grade_swing(row, scorers, ranges or load_ranges())
-    res = {"predicted": {k: round(m.predict(full), 1) for k, m in models.items()}, "grading": "lab_range_v2",
-           "scores": {g: (v if v is not None else 0.0) for g, v in gs["scores"].items()}}
-    res["scores"]["form"] = round(float(np.mean([res["scores"][g] for g in GROUP_TARGET])), 1)
+    gs = grade_swing(row, scorers, ranges or load_ranges(), unreliable)
+    res = {"predicted": {k: round(m.predict(full), 1) for k, m in models.items()}, "grading": "elite_match_v1",
+           "scores": dict(gs["scores"])}       # a group with nothing gradable (partial swing) is None
+    have = [g for g in GROUP_TARGET if res["scores"][g] is not None]
+    try:
+        res["elite"] = elite.match(row, height_m=covariates.get("height_m"), mass_kg=covariates.get("mass_kg"),
+                                   unreliable=unreliable)
+    except FileNotFoundError:             # no data/models/elite_ref.json: fall back to the group grades
+        res["elite"] = None
+    group_mean = round(float(np.mean([res["scores"][g] for g in have])), 1) if have else 0.0
+    res["scores"]["form"] = float(res["elite"]["match"]) if res["elite"] and res["elite"]["match"] is not None else group_mean
     res["scores"]["contact"] = None          # set by with_contact() when a ball was hit
     res["scores"]["overall"] = res["scores"]["form"]
     res["scores_lab_model"] = {g: sc.score(row)[0] for g, sc in scorers.items()}
     res["grades"], res["not_graded"] = gs["grades"], gs["not_graded"]
-    weakest = min(GROUP_TARGET, key=lambda g: res["scores"][g])
+    weakest = min(have or GROUP_TARGET, key=lambda g: res["scores"][g] or 0.0)
     res["weakest_group"] = weakest
     gr = gs["grades"]
     res["contributions"] = {g: [{**c, "grade": gr[c["feature"]]["grade"], "lab_p25": gr[c["feature"]]["lab_p25"],
                                  "lab_p75": gr[c["feature"]]["lab_p75"]}
                                 for c in scorers[g].contributions(row) if c["feature"] in gr] for g in GROUP_TARGET}
-    # Coach the measurement furthest below the lab spread in the weakest group; strong swings get praise.
-    low = [c for c in res["contributions"][weakest] if c["grade"] < FOCUS_MAX_GRADE]
-    res["focus"] = (max(low, key=lambda c: gr[c["feature"]]["weight"] * (100 - c["grade"]))
-                    if low and res["scores"]["overall"] < STRONG_SWING else None)
+    if res["elite"]:
+        res["focus"] = elite_focus(res)
+    else:   # Coach the measurement furthest below the lab spread in the weakest group; strong swings get praise.
+        low = [c for c in res["contributions"][weakest] if c["grade"] < FOCUS_MAX_GRADE]
+        res["focus"] = (max(low, key=lambda c: gr[c["feature"]]["weight"] * (100 - c["grade"]))
+                        if low and res["scores"]["overall"] < STRONG_SWING else None)
     res["tree_path"] = {k: m.tree_path(row) for k, m in models.items()}
     return res
+
+
+def elite_focus(res: dict, skip: tuple = ()) -> dict | None:
+    """The focus = the lowest measured factor below elite level and its weakest measurement (elite.weakest),
+    in the shape the coach and viewer already read (feature, label, value, typical, unit, effect_mph), plus
+    factor / factor_label / percent. effect_mph comes from the lab model when the measurement is one of its
+    inputs, else None."""
+    from . import elite
+    w = elite.weakest(res["elite"], skip=skip)
+    if not w:
+        return None
+    fc, part = w
+    mph = next((c["effect_mph"] for cs in res.get("contributions", {}).values() for c in cs
+                if c["feature"] == part["feature"]), None)
+    typical = part.get("elite_median", part.get("target"))
+    return {"feature": part["feature"], "label": part["label"], "value": part["value"], "unit": part["unit"],
+            "typical": typical, "effect_mph": mph, "factor": fc["key"], "factor_label": fc["label"],
+            "percent": part["percent"], "factor_percent": fc["percent"]}
+
+
+def with_ai_rating(analysis: dict, rating: float | None, notes: str = "", source: dict | None = None) -> dict:
+    """Add the AI coach's Explosiveness rating (from the video) to the elite match; recompute Form/Overall."""
+    from . import elite
+    if not analysis.get("elite"):
+        return analysis
+    elite.with_ai(analysis["elite"], rating, notes, source)
+    sc = analysis["scores"]
+    sc["form"] = float(analysis["elite"]["match"])
+    sc["overall"] = round((sc["form"] + sc["contact"]) / 2, 1) if sc.get("contact") is not None else sc["form"]
+    return analysis
 
 
 # ---------------------------------------------------------------- ball contact (hit mode only)

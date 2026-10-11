@@ -46,7 +46,7 @@ def test_a_still_light_is_not_a_hit():
 
 @needs_models
 def test_dry_swing_gets_form_only(tmp_path):
-    t, J = rigid_swing()
+    t, J = rigid_swing(hip_rate=1000)      # fast enough to be found as a swing
     kps = render_stray(tmp_path / "rec", t, J)
     out = pipeline.analyze_recording(tmp_path / "rec", None, HITTER, use_gemini=False, keypoints_fn=lambda v: (kps, (W, H)))
     rec = out["recs"][0]
@@ -58,7 +58,7 @@ def test_dry_swing_gets_form_only(tmp_path):
 
 @needs_models
 def test_hit_gets_a_contact_score(tmp_path):
-    t, J = rigid_swing()
+    t, J = rigid_swing(hip_rate=1000)      # fast enough to be found as a swing
     kps = render_stray(tmp_path / "rec", t, J)
     shot = tmp_path / "shot.mp4"
     write_ball_video(shot)

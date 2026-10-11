@@ -373,8 +373,8 @@ def lift_world(cap: Capture, world: dict[int, dict[str, tuple[float, float, floa
     from scipy.ndimage import median_filter
     if not world:
         return None
-    from .skeleton import MEDIAPIPE
-    names = list(MEDIAPIPE.values())
+    from .skeleton import MEDIAPIPE, MEDIAPIPE_FEET
+    names = [n for n in (*MEDIAPIPE.values(), *MEDIAPIPE_FEET.values()) if any(n in f for f in world.values())]
     flip = np.diag([1.0, -1.0, -1.0])
     rel = {n: np.full((cap.n, 3), np.nan) for n in names}
     for i, f in world.items():
@@ -466,7 +466,7 @@ def mediapipe_keypoints(video: str | Path, model_path: str | Path, every: int = 
     import mediapipe as mp
     from mediapipe.tasks import python as mpt
     from mediapipe.tasks.python import vision
-    from .skeleton import MEDIAPIPE
+    from .skeleton import MEDIAPIPE, MEDIAPIPE_FEET
     opts = vision.PoseLandmarkerOptions(base_options=mpt.BaseOptions(model_asset_path=str(model_path)),
                                         running_mode=vision.RunningMode.VIDEO, num_poses=1)
     fps = fps or cv2.VideoCapture(str(video)).get(cv2.CAP_PROP_FPS) or 60.0
@@ -483,7 +483,8 @@ def mediapipe_keypoints(video: str | Path, model_path: str | Path, every: int = 
                               for k, name in MEDIAPIPE.items()}
                     if world is not None and r.pose_world_landmarks:
                         wl = r.pose_world_landmarks[0]
-                        world[i] = {name: (wl[k].x, wl[k].y, wl[k].z) for k, name in MEDIAPIPE.items()}
+                        world[i] = {name: (wl[k].x, wl[k].y, wl[k].z)
+                                    for k, name in {**MEDIAPIPE, **MEDIAPIPE_FEET}.items()}
     return out, size
 
 

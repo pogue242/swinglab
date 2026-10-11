@@ -36,6 +36,10 @@ Other additions:
   not read either.
 
 ### 2026-10-11 later (answers to "Requested by UI" below)
+- **Partial swings / model path** (UI request 2026-10-11): done. A partial swing is not graded or coached on
+  anything measured from the stance, load or foot plant (`scoring.NEEDS_STANCE`; listed in
+  `analysis.not_graded` with the reason); a group left with nothing to grade is `null` and Form averages the
+  others. `mode_evidence` now says "ball detector not installed: treated as a dry swing" (path only in the log).
 - **NaN**: done. Swing and summary JSON go through `pipeline.json_safe` (NaN / ±inf -> `null`) and
   `allow_nan=False`. Files written before this still contain NaN until re-analyzed.
 - **Negative `pelvis_vel` / `torso_vel`**: the sign is meaningful: **+ = turning open toward the pitcher,
@@ -59,6 +63,37 @@ Other additions:
   `analysis.grading` = "lab_range_v2", `analysis.scores_lab_model` (old scores, for comparison).
   **Changed meaning**: `analysis.scores.power/transfer/posture/form/overall` are now weighted grades vs the
   lab spread, not percentiles of a predicted bat speed (typical lab swing ~70, not 50).
+
+### 2026-10-11 late: the elite-match review (agreed with the user; local commit, not pushed yet)
+**Changed meaning:** `analysis.scores.form` / `overall` = the **elite match** (0–100: the mean of the factor
+percents below). `power` / `transfer` / `posture` stay as secondary group grades. `analysis.grading` =
+"elite_match_v1".
+New `analysis.elite`:
+`{"match": 0–100 | null, "at_elite": int, "n_judged": int, "standard": str,
+  "elite_reference": {"n_elite_swings", "n_elite_hitters", "n_swings"},
+  "factors": [{"key", "label", "help", "percent": 0–100 | null, "verdict": "elite" | "close" | "work on" |
+  "not judged", "note"? (camera caveat), "parts": [{"feature", "label", "unit", "value", "percent", "rule",
+  "elite_median"? | "elite_band"? [lo, hi] | "elite_from"? | "elite_up_to"? | "target"?, "skipped"? (reason)}],
+  "observations"? / "rated_by"? (AI factor only)}]}`.
+Factor keys in order: hand_speed, shoulder_turn, hip_turn, leg_drive, front_leg_block, contact_point, stretch,
+step_through, explosiveness (AI-rated from the video; absent without Gemini). Suggested display: the headline
+"Elite match N%" + "K of M at elite level", then one row per factor (label, % bar, verdict, `help` on tap, the
+parts' value vs elite), the AI factor labeled as rated by AI, `note` as a small caveat.
+`analysis.focus` gains `factor`, `factor_label`, `percent`, `factor_percent`; `focus.effect_mph` can be null.
+New per swing: `blind_look` {rating, upper_body, legs, standout} (the AI's look before seeing numbers);
+`report.video_notes` [str], `report.disagreements` [str]; `stages.coach_video`. New measurements in
+`features`: torso_turn_total, pelvis_turn_total, drive_speed, rear_foot_turn (labels in `features.FACTOR_FEATURES`).
+
+### 2026-10-11: for the UI session, from the user (FUNC relays)
+- **Whole-recording view should be the default** for multi-swing recordings: the recording's video with its
+  swings listed on the side (timestamps, and thumbnails/short videos if possible); tapping a swing opens that
+  swing's breakdown (today's view). Keep today's one-swing-at-a-time view as the other option (toggle).
+  Data: `GET /api/profiles/{id}/recordings` (above): `video.url` plays the whole recording, `swings[].t.peak`
+  are seconds into it, `swings[].url` / `video_url` are the swing's JSON and annotated video.
+- Partial swings (`swings[].partial`) should be marked, not hidden.
+- Coming next from FUNC (scoring redesign agreed with the user): `analysis.elite`, a review of ~9 factors,
+  each "% of elite" with the measurements behind it, plus a count of factors at elite level and one AI-rated
+  factor (from the video). Field list will be posted here when it lands.
 
 ## Requested by UI
 - 2026-10-11 (after re-analyzing Adam with func/scoring): swing 1 is `window.partial` and its warning says
