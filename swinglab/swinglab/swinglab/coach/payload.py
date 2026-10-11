@@ -33,6 +33,7 @@ def elite_block(el: dict | None) -> dict | None:
     return {"match_percent": el["match"], "at_elite": el["at_elite"], "factors_judged": el["n_judged"],
             "standard": el.get("standard"),
             "factors": [{"factor": f["label"], "percent_of_elite": f["percent"], "verdict": f["verdict"],
+                         "weight": f.get("weight", 1.0),
                          **({"note": f["note"]} if f.get("note") else {}),
                          "measurements": [{"name": p["label"], **{k: p[k] for k in keep if p.get(k) is not None}}
                                           for p in f["parts"]]} for f in el["factors"]]}

@@ -36,6 +36,8 @@ class SwingReport(BaseModel):
     training_focus: str = Field(default="", description="One sentence: what the training plan targets and why")
     training_plan: list[TrainingItem] = Field(default_factory=list, max_length=5,
                                               description="3-4 exercises chosen ONLY from exercise_options")
+    coach_view: str = Field(default="", description="Your own read of the video along the kinetic chain, in 2-3 sentences, "
+                                                     "before leaning on the numbers (empty without a video)")
     video_notes: list[str] = Field(default_factory=list, max_length=4,
                                    description="What the video shows about the focus factor that the numbers don't (empty without a video)")
     disagreements: list[str] = Field(default_factory=list, max_length=3,
