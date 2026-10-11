@@ -233,7 +233,9 @@ def analyze_slowmo(video: str | Path, *, fps: float = 240.0, m_per_px: float | N
         except FileNotFoundError:
             detector = None
         if detector and detector["kind"] in ("hit", "miss"):
-            ev = {**ev, "kind": detector["kind"], "how": "toss", "reason": detector["reason"]}
+            # the tracker's path was not the ball: drop it, or its rest spot / flight would be fitted as a launch
+            ev = {**ev, "kind": detector["kind"], "how": "toss", "reason": detector["reason"], "rest": None,
+                  "last_rest_frame": None, "flight": {}, "xy": np.full_like(ev["xy"], np.nan)}
     tb = ev if ev["kind"] == "hit" and ev.get("rest") is not None else None   # a detector hit has no fitted path
     xy = ev["xy"]
     c = None

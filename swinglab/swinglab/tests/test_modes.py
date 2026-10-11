@@ -156,3 +156,24 @@ def test_detector_reads_a_toss_hit_and_a_miss():
     assert m["kind"] == "miss" and m["flight"] is None
     none = B.detector_ball_outcome(range(n), fps=fps, detect=lambda i: [person])
     assert none["kind"] == "none"
+
+
+@pytest.mark.real_ball_check
+def test_detector_hit_does_not_reuse_the_trackers_path(monkeypatch, tmp_path):
+    """TestSet4 bug: the blob tracker's rest spot leaked into the launch fit after the detector decided."""
+    import cv2
+    clip = tmp_path / "c.mp4"
+    vw = cv2.VideoWriter(str(clip), cv2.VideoWriter_fourcc(*"mp4v"), 30.0, (320, 240))
+    for _ in range(40):
+        vw.write(np.zeros((240, 320, 3), np.uint8))
+    vw.release()
+    xy = np.full((40, 2), np.nan)
+    monkeypatch.setattr(B, "ball_events", lambda cands, expected_r=None, fps=None: {
+        "kind": "hit", "how": "tee", "rest": (100.0, 100.0, 5.0), "last_rest_frame": 10, "flight": {11: np.array([150.0, 90.0])},
+        "xy": xy, "reason": "the ball left the tee"})
+    monkeypatch.setattr(B, "confirm_ball", lambda *a, **k: {"confirmed": False, "frames_checked": 3})
+    monkeypatch.setattr(B, "detector_ball_outcome", lambda frames, fps, **k: {
+        "kind": "hit", "reason": "flew away", "exit_speed_mph": 25.0, "flight": {"frames": [12, 20]}, "tracks": 2})
+    out = pipeline.analyze_slowmo(clip, fps=240, track_bat=False)
+    assert out["ball_outcome"] == "hit" and out["exit_speed_mph"] is None and out["exit_speed_rough_mph"] == 25.0
+    assert out["contact_frame"] is None
