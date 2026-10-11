@@ -829,9 +829,11 @@ def confirm_ball(frames, tracked_xy: np.ndarray | None = None, *, every: int = 3
 # TestSet4 (240 fps, self-tossed balls, phone held to the side): the blob tracker followed white clutter, while
 # YOLOX found the real ball in many frames. The ball vanishes at the bat and reappears farther away, so a hit is
 # not one continuous path. From the detector's own tracks instead:
-#   hit   a FAST track (>= MIN_FLIGHT_PX_PER_FRAME) moving away from the hitter, starting near contact
-#   miss  no such flight, but a ball (the toss) near the hitter around contact
-#   none  no ball seen around contact
+#   hit   a FAST track (>= MIN_FLIGHT_PX_PER_FRAME) moving away from the hitter, starting near contact; or the toss
+#         is seen coming down by the hitter, vanishes at bat height and is never seen falling past the waist (hit
+#         out of the camera's view: toward it, or straight away; TestSet4, where the team reported misses that were hits)
+#   miss  the toss is seen falling on past the hitter's waist (it went by the bat)
+#   none  no toss seen near the hitter
 # Exit speed: the flight's image-plane speed x the scale from the ball's own box size (0.0737 m) - rough, and low
 # when the ball flies toward or away from the camera.
 
@@ -871,23 +873,24 @@ def detector_ball_outcome(frames, *, fps: float, contact_frame: int | None = Non
             if c == COCO_SPORTS_BALL:
                 pts.append((i, x, y, min(w, h)))
             elif c == COCO_PERSON and sc >= 0.3:
-                people.append((x, w))
+                people.append((x, y, w, h))
     c0 = n // 2 if contact_frame is None else int(contact_frame)
     lo, hi = c0 - int(before_s * fps), c0 + int(after_s * fps)
-    px = float(np.median([p[0] for p in people])) if people else None
-    pw = float(np.median([p[1] for p in people])) if people else None
+    px, py, pw, ph = (float(v) for v in np.median(np.array(people), axis=0)) if people else (None, None, None, None)
     trs = link_detections(pts)
     sizes = [p[3] for p in pts if p[3] > 2]
     m_per_px = 2 * BALL_RADIUS_M / float(np.median(sizes)) if sizes else None
-    flights, near = [], []
+    flights, tosses = [], []
     for t in trs:
         (i0, x0, y0, _), (i1, x1, y1, _) = t[0], t[-1]
+        if np.hypot(x1 - x0, y1 - y0) < 15:                   # a ball lying still (ground, bucket)
+            continue
         speed = float(np.hypot(x1 - x0, y1 - y0)) / max(1, i1 - i0)
         away = px is None or (x1 - x0) * (x0 - px) > 0 or (y1 - y0) < -2 * abs(x1 - x0)
         if speed >= MIN_FLIGHT_PX_PER_FRAME and away and lo <= i0 <= hi:
             flights.append((t, speed))
-        elif i1 >= lo and i0 <= c0 + int(0.1 * fps) and (px is None or abs(np.median([p[1] for p in t]) - px) <= 1.5 * (pw or 400)):
-            near.append(t)
+        elif y1 > y0 and (px is None or abs(float(np.median([p[1] for p in t])) - px) <= 0.9 * (pw or 400)):
+            tosses.append(t)                                   # coming down by the hitter
     out = {"frames": n, "frames_with_ball": len({p[0] for p in pts}), "flight": None, "exit_speed_mph": None,
            "launch_angle_deg": None, "tracks": len(trs), "scale_m_per_px": m_per_px}
     if flights:
@@ -900,7 +903,11 @@ def detector_ball_outcome(frames, *, fps: float, contact_frame: int | None = Non
         out["launch_angle_deg"] = round(float(np.degrees(np.arctan2(-(y1 - y0), abs(x1 - x0)))), 1)
         return {**out, "kind": "hit", "reason": f"the ball detector saw the ball fly away from the hitter after contact "
                                                 f"({len(t)} frames)"}
-    if near:
-        return {**out, "kind": "miss", "reason": "the ball detector saw the ball by the hitter at contact, but nothing flew "
-                                                 "away (swing and miss)"}
-    return {**out, "kind": "none", "reason": "the ball detector saw no ball near the hitter around contact"}
+    waist = None if py is None else py + 0.05 * ph            # image y grows downward
+    if tosses and waist is not None and any(max(p[2] for p in t) > waist for t in tosses):
+        return {**out, "kind": "miss", "reason": "the ball detector saw the toss fall on past the hitter's waist: it went "
+                                                 "by the bat (swing and miss)"}
+    if tosses:
+        return {**out, "kind": "hit", "how": "left_view", "reason": "the toss came down by the hitter and vanished at bat "
+                "height, never falling past him: hit out of the camera's view (direction and speed not seen)"}
+    return {**out, "kind": "none", "reason": "the ball detector saw no toss near the hitter"}
