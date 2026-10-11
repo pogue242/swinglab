@@ -64,6 +64,26 @@ Other additions:
   **Changed meaning**: `analysis.scores.power/transfer/posture/form/overall` are now weighted grades vs the
   lab spread, not percentiles of a predicted bat speed (typical lab swing ~70, not 50).
 
+### 2026-10-11 late: the elite-match review (agreed with the user; local commit, not pushed yet)
+**Changed meaning:** `analysis.scores.form` / `overall` = the **elite match** (0–100: the mean of the factor
+percents below). `power` / `transfer` / `posture` stay as secondary group grades. `analysis.grading` =
+"elite_match_v1".
+New `analysis.elite`:
+`{"match": 0–100 | null, "at_elite": int, "n_judged": int, "standard": str,
+  "elite_reference": {"n_elite_swings", "n_elite_hitters", "n_swings"},
+  "factors": [{"key", "label", "help", "percent": 0–100 | null, "verdict": "elite" | "close" | "work on" |
+  "not judged", "note"? (camera caveat), "parts": [{"feature", "label", "unit", "value", "percent", "rule",
+  "elite_median"? | "elite_band"? [lo, hi] | "elite_from"? | "elite_up_to"? | "target"?, "skipped"? (reason)}],
+  "observations"? / "rated_by"? (AI factor only)}]}`.
+Factor keys in order: hand_speed, shoulder_turn, hip_turn, leg_drive, front_leg_block, contact_point, stretch,
+step_through, explosiveness (AI-rated from the video; absent without Gemini). Suggested display: the headline
+"Elite match N%" + "K of M at elite level", then one row per factor (label, % bar, verdict, `help` on tap, the
+parts' value vs elite), the AI factor labeled as rated by AI, `note` as a small caveat.
+`analysis.focus` gains `factor`, `factor_label`, `percent`, `factor_percent`; `focus.effect_mph` can be null.
+New per swing: `blind_look` {rating, upper_body, legs, standout} (the AI's look before seeing numbers);
+`report.video_notes` [str], `report.disagreements` [str]; `stages.coach_video`. New measurements in
+`features`: torso_turn_total, pelvis_turn_total, drive_speed, rear_foot_turn (labels in `features.FACTOR_FEATURES`).
+
 ### 2026-10-11: for the UI session, from the user (FUNC relays)
 - **Whole-recording view should be the default** for multi-swing recordings: the recording's video with its
   swings listed on the side (timestamps, and thumbnails/short videos if possible); tapping a swing opens that
