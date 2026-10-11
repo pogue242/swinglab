@@ -927,5 +927,14 @@ Contract changes between the tracks: `docs/CONTRACT_CHANGES.md`.
 
 ### 14 UI log
 (UI session: newest first.)
+- 2026-10-10: **too many measurements** (item 9). The swing view now shows **Key measurements**: the focus
+  measurement first, then the 5 with the biggest top-vs-bottom-third effect in the lab data (top hip speed, top
+  chest speed, biggest hip–shoulder separation, hands out front, front leg straightening). Each row: value, a
+  plain verdict vs. the top-third band ("like / less than / more than top hitters", green when on the good
+  side), top-third value, range bar. The full grouped table (22 rows with help text) is folded under
+  **All measurements**. Panel height at 1366×900: 2910 px → 581 px. Checked at desktop and 375 px (no
+  horizontal scroll) on stand-in swings built from the lab reference (hit, miss, dry with warnings, a focus
+  outside the 5, a record with no features); **not yet on the real Matteo/Wilson userdata**. FUNC can override
+  the list with an optional `key_features` array in `app.json` (read defensively, see CONTRACT_CHANGES.md).
 - 2026-10-10: phone upload page moved out of `api/server.py` into `web/upload.html` (served unchanged at `/upload`)
   so the UI track owns it.

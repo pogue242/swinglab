@@ -197,6 +197,25 @@ svg text{font-family:var(--mono);font-size:11px;fill:var(--muted)}
 .range i{position:absolute;top:0;bottom:0;left:50%;width:1px;background:var(--muted)}
 .range u{position:absolute;top:0;bottom:0;background:color-mix(in srgb,var(--steel) 45%,transparent);border-radius:4px}
 .range em{position:absolute;top:12px;font:10px var(--mono);font-style:normal;color:var(--warn);white-space:nowrap}
+/* key measurements: the few that matter, the rest behind "All measurements" */
+.keys{display:grid;gap:2px}
+.key{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;align-items:baseline;padding:10px 0 12px;border-bottom:1px solid var(--line)}
+.key.focus{background:color-mix(in srgb,var(--seam) 7%,transparent);border-left:3px solid var(--seam);padding-left:10px;padding-right:13px;margin:0 -13px 0 -13px}
+.key .kl{font-weight:600;min-width:0}
+.key .kv{font:500 17px var(--mono);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.key .kv small{font-size:12px;color:var(--muted)}
+.key .kw{font-size:13px;color:var(--muted)}
+.key .kw b{font-weight:600}
+.key .kw b.good{color:var(--good)}.key .kw b.warn{color:var(--warn)}
+.key .kt{font:12px var(--mono);color:var(--muted);text-align:right;white-space:nowrap}
+.key .range{grid-column:1/-1;margin-top:8px}
+.klegend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);margin:10px 0 0}
+.klegend i{display:inline-block;width:14px;height:8px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.kl-lab{background:var(--line)}.kl-top{background:color-mix(in srgb,var(--steel) 45%,transparent)}.kl-you{background:var(--ink);width:4px!important;height:12px!important}
+details.allmeas{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+details.allmeas summary{cursor:pointer;font:600 15px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--navy)}
+details.allmeas summary span{font:400 13px var(--body);letter-spacing:0;text-transform:none;color:var(--muted)}
+details.allmeas[open] summary{margin-bottom:6px}
 /* progress */
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:12px}
 .tiles div{border-top:1px solid var(--line);padding-top:6px}
@@ -330,9 +349,12 @@ dialog h2{color:var(--ink)}
           <p class="note">In an efficient swing the hips reach top speed first, then the chest, then the hands, each faster than the last. Dashed lines: foot plant and contact, found from the skeleton.</p>
         </div>
         <div class="panel">
-          <h2>Measurements</h2>
-          <p class="note" style="margin-top:-4px">Compared with 677 lab swings: the grey bar is the middle 80% of lab hitters, the green band is where the hitters with the fastest bats for their size sit (top third), the dark marker is you.</p>
-          <div class="tbl"><table class="meas" id="meas"></table></div>
+          <h2>Key measurements</h2>
+          <div class="keys" id="keys"></div>
+          <p class="klegend"><span><i class="kl-lab"></i>middle 80% of 677 lab swings</span><span><i class="kl-top"></i>top hitters for their size</span><span><i class="kl-you"></i>you</span></p>
+          <details class="allmeas" id="allmeas"><summary>All measurements <span id="allN"></span></summary>
+            <div class="tbl"><table class="meas" id="meas"></table></div>
+          </details>
         </div>
       </div>
     </section>
@@ -700,19 +722,45 @@ function fmtF(k,v){const f=APP.feature_info[k]||{};if(v==null||!isFinite(v))retu
   if(f.unit==="ratio")return `${v.toFixed(2)}<small>×</small>`;
   const d=f.unit==="m/s"?1:0;return `${v.toFixed(d)}<small> ${UNIT[f.unit]||f.unit}</small>`}
 const DIR={higher:"↑ more is better",lower:"↓ less is better",range:"aim for the green band"};
+// Shown by default: the measurements that separate the fastest bats for their size from the slowest in the lab data
+// (HANDOFF section 1, biggest effects first). The analysis may send its own list as app.json "key_features".
+const KEY_FEATURES=["pelvis_vel_peak","torso_vel_peak","separation_max","hands_forward_contact","lead_knee_extension"];
+function rangeBar(k,v){
+  const q=APP.population&&APP.population[k];if(!q||v==null||!isFinite(v))return"";
+  const P=x=>10+80*(x-q[0])/((q[4]-q[0])||1),raw=P(v),pos=Math.max(1,Math.min(99,raw));
+  const tg=APP.target&&APP.target[k],band=tg?`<u style="left:${Math.max(0,Math.min(P(tg[0]),P(tg[2])))}%;width:${Math.max(2,Math.abs(P(tg[2])-P(tg[0])))}%"></u>`:"";
+  const out=raw<0?`<em style="left:0">◀ below lab range</em>`:raw>100?`<em style="right:0">above lab range ▶</em>`:"";
+  return `<div class="range" title="lab 10–90%: ${q[0]} to ${q[4]}">${band}<i></i><b class="${raw<0||raw>100?"out":""}" style="left:${pos}%"></b>${out}</div>`}
+// Where the hitter sits against the top third's middle 50% (or the lab's middle 80% when there is no target band).
+function verdict(k,v){
+  const f=APP.feature_info[k]||{},tg=APP.target&&APP.target[k],q=APP.population&&APP.population[k];
+  if(v==null||!isFinite(v)||(!tg&&!q))return null;
+  const lo=tg?Math.min(tg[0],tg[2]):q[0],hi=tg?Math.max(tg[0],tg[2]):q[4],who=tg?"top hitters":"most lab hitters";
+  if(v>=lo&&v<=hi)return {cls:"good",text:`like ${who}`};
+  const side=v<lo?"less":"more",ok=(side==="more"&&f.better==="higher")||(side==="less"&&f.better==="lower");
+  return {cls:ok?"good":"warn",text:`${side} than ${who}`}}
+function renderKeys(){
+  const s=REC,F=APP.feature_info||{},feats=s.features||{},focus=s.analysis&&s.analysis.focus&&s.analysis.focus.feature;
+  const list=(Array.isArray(APP.key_features)&&APP.key_features.length?APP.key_features:KEY_FEATURES).slice();
+  if(focus&&F[focus]){const j=list.indexOf(focus);if(j>=0)list.splice(j,1);list.unshift(focus)}
+  const rows=list.filter(k=>F[k]&&feats[k]!=null).map(k=>{const f=F[k],v=feats[k],vd=verdict(k,v),tg=APP.target&&APP.target[k];
+    return `<div class="key${k===focus?" focus":""}"><span class="kl">${esc(f.label)}${k===focus?' <span class="badge">focus</span>':""}</span><span class="kv">${fmtF(k,v)}</span>
+      <span class="kw">${vd?`<b class="${vd.cls}">${esc(vd.text)}</b>`:""}</span><span class="kt">${tg?`top: ${fmtF(k,tg[1]).replace(/<[^>]+>/g,"")}`:""}</span>
+      ${rangeBar(k,v)}</div>`});
+  $("#keys").innerHTML=rows.join("")||`<p class="note">No measurements for this swing.</p>`;
+}
 function renderTable(){
-  const s=REC,F=APP.feature_info,focus=s.analysis&&s.analysis.focus&&s.analysis.focus.feature,G=APP.groups||{};
-  let h=`<tr><th>Measurement</th><th style="text-align:right">You</th><th style="text-align:right">Top third</th><th style="width:34%">vs. lab hitters</th></tr>`;
+  const s=REC,F=APP.feature_info,feats=s.features||{},focus=s.analysis&&s.analysis.focus&&s.analysis.focus.feature,G=APP.groups||{};
+  let h=`<tr><th>Measurement</th><th style="text-align:right">You</th><th style="text-align:right">Top third</th><th style="width:34%">vs. lab hitters</th></tr>`,n=0;
   GROUPS.forEach(g=>{h+=`<tr class="grp"><td colspan="4">${esc((G[g]||{}).label||GLAB[g])} <span>${esc((G[g]||{}).help||"")}</span></td></tr>`;
     Object.entries(F).filter(([k,f])=>f.group===g&&f.unit!=="bool").forEach(([k,f])=>{
-      const q=APP.population[k],v=s.features[k];if(!q)return;
-      const P=x=>10+80*(x-q[0])/((q[4]-q[0])||1),raw=P(v),pos=Math.max(1,Math.min(99,raw));
-      const tg=APP.target&&APP.target[k],band=tg?`<u style="left:${Math.max(0,Math.min(P(tg[0]),P(tg[2])))}%;width:${Math.max(2,Math.abs(P(tg[2])-P(tg[0])))}%"></u>`:"";
-      const out=raw<0?`<em style="left:0">◀ below lab range</em>`:raw>100?`<em style="right:0">above lab range ▶</em>`:"";
+      const q=APP.population[k],v=feats[k];if(!q)return;n++;
+      const tg=APP.target&&APP.target[k];
       h+=`<tr class="${k===focus?"focus":""}"><td><b>${esc(f.label)}</b>${k===focus?' <span class="badge">focus</span>':""}<span class="what">${esc(f.help||"")}</span><span class="dir">${DIR[f.better]||""}</span></td>
         <td class="n">${fmtF(k,v)}</td><td class="n">${fmtF(k,tg?tg[1]:q[2])}</td>
-        <td><div class="range" title="lab 10–90%: ${q[0]} to ${q[4]}">${band}<i></i><b class="${raw<0||raw>100?"out":""}" style="left:${pos}%"></b>${out}</div></td></tr>`})});
-  $("#meas").innerHTML=h;
+        <td>${rangeBar(k,v)}</td></tr>`})});
+  $("#meas").innerHTML=h;$("#allN").textContent=`(${n}, with what each one means)`;
+  renderKeys();
 }
 
 /* ---------- progress ---------- */
