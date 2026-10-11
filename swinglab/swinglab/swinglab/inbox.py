@@ -235,6 +235,17 @@ def key(p: Pair) -> str:
     return f"{p.session}/{p.swing}|{p.lidar}|{clips}"
 
 
+def signature(p: Pair) -> list:
+    """Size and modification time of the pair's files: a failed recording is retried when they change
+    (e.g. the same file uploaded again after the cause was fixed)."""
+    out = []
+    for f in [p.lidar, p.slowmo, *(p.slowmo_clips or [])]:
+        if f and Path(f).exists():
+            st = Path(f).stat()
+            out.append([Path(f).name, st.st_size, round(st.st_mtime, 3)])
+    return out
+
+
 def process(root: str | Path, *, analyze_recording=None, save=None, save_session=None,
             force: bool = False, log=print, userdata: str | Path | None = None) -> list[dict]:
     """Analyze every new pair. Every swing found in a recording is analyzed the same way (one or
@@ -248,12 +259,15 @@ def process(root: str | Path, *, analyze_recording=None, save=None, save_session
     save = save or (lambda r, folder: pipeline.save_result(r, folder, out_root=userdata))
     save_session = save_session or (lambda sm, folder: pipeline.save_session(sm, folder, out_root=userdata))
     csv_hitters = read_hitters(root)
-    state = {} if force else load_state(root)
+    # ``force`` re-runs everything but keeps the other entries in the state file: another process
+    # (the server's drop-folder watcher) reads it and would re-run whatever is missing at the same time
+    state = load_state(root)
     done = []
     for p in scan(root, [pr["name"] for pr in profiles.list_profiles(userdata) if not pr.get("synthetic")]):
         k = key(p)
-        if k in state:
-            continue
+        prev = state.get(k)
+        if prev and not force and not (prev.get("failed") and prev.get("signature") != signature(p)):
+            continue                      # done, or failed and unchanged since (retried when the file changes)
         name = p.hitter or ""
         prof = profiles.by_name(name, userdata)
         if prof is None and name in csv_hitters:
@@ -279,7 +293,8 @@ def process(root: str | Path, *, analyze_recording=None, save=None, save_session
                 log(f"      !! {r['id']}: not analyzed: " + "; ".join(
                     f"{s_}: {v.get('error')}" for s_, v in (r.get("stages") or {}).items() if not v.get("ok")))
                 continue
-            saved.append(str(save(r, prof["id"])))
+            r["saved_file"] = str(save(r, prof["id"]))
+            saved.append(r["saved_file"])
             log(f"      -> {r['id']}: {r.get('mode', '?')} swing, form {r['analysis']['scores'].get('form')}"
                 f", contact {r['analysis']['scores'].get('contact')}, stages "
                 f"{ {s_: v.get('ok') for s_, v in (r.get('stages') or {}).items()} }")
@@ -289,6 +304,11 @@ def process(root: str | Path, *, analyze_recording=None, save=None, save_session
             for note in out["summary"].get("notes") or []:
                 log(f"      !! {note}")
         state[k] = {"profile": prof["id"], "swings": len(saved), "results": saved}
+        if not saved:                     # failed: retried when the recording changes or is uploaded again
+            state[k].update(failed=True, signature=signature(p))
+            for r in recs:
+                r.setdefault("error", next((v.get("error") for v in (r.get("stages") or {}).values()
+                                            if not v.get("ok") and v.get("error")), "no swing could be analyzed"))
         done.extend(r for r in recs if "analysis" in r or not saved)
         save_state(root, state)
     return done

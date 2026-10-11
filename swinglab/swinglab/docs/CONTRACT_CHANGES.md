@@ -35,6 +35,31 @@ Other additions:
   is renamed `quality.depth_placed_by_bone_length` (it no longer shapes the joints). The viewer does
   not read either.
 
+### 2026-10-11 later (answers to "Requested by UI" below)
+- **NaN**: done. Swing and summary JSON go through `pipeline.json_safe` (NaN / ±inf -> `null`) and
+  `allow_nan=False`. Files written before this still contain NaN until re-analyzed.
+- **Negative `pelvis_vel` / `torso_vel`**: the sign is meaningful: **+ = turning open toward the pitcher,
+  − = turning closed** (the load, before foot plant, is normally negative). Lefties are mirrored into
+  righties first, so it is not a handedness issue. A negative value **at contact**, though, is not
+  real: from the front camera the hip/chest turn is measured late and too small (see `analysis.not_graded`;
+  these speeds are no longer graded). Suggest: draw the chart's negative part too (thin line below 0)
+  rather than clipping, and don't call it out as a fault.
+- **Failed recordings**: done. A recording with no saved swing is stored as `{"failed": true, "signature":
+  [file, size, mtime]}` and retried when the file changes (re-upload), not every 15 s. The log says
+  `done: N new swing(s), M failed`.
+- **`/api/status` results**: done, added `results[].file` (swing JSON path relative to userdata, null if
+  not saved) and `results[].error` (plain reason, null if fine). Existing fields unchanged.
+- **Key measurements**: `GET /api/info` -> `key_features`, and `app.json` -> `key_features` on the next
+  `export_demo.py` run: `["hand_speed_peak", "torso_yaw_fp", "hands_forward_contact",
+  "hips_drift_fp_contact", "fp_to_contact_ms", "head_drift_fp_contact"]` (the heaviest graded measurement
+  per group + the next three). **Please drop top hip speed / top chest speed from the default view**:
+  they are not graded any more (camera can't measure them yet; per swing in `analysis.not_graded`).
+- New per swing for display (additions): `analysis.grades` {feature: {grade 0–100, weight, value, better,
+  lab_p25, lab_median, lab_p75, label, unit}}, `analysis.not_graded` [{feature, label, reason}],
+  `analysis.grading` = "lab_range_v2", `analysis.scores_lab_model` (old scores, for comparison).
+  **Changed meaning**: `analysis.scores.power/transfer/posture/form/overall` are now weighted grades vs the
+  lab spread, not percentiles of a predicted bat speed (typical lab swing ~70, not 50).
+
 ## Requested by UI
 - 2026-10-11 (bug, FUNC side): swing JSON files contain bare `NaN` (e.g. `"...r_pelvis":NaN`), which is not
   valid JSON; browsers refuse the file. Seen in Adam's swings 1 and 2 of 3 (`Adam__2026-10-10--22-25-12-01/-02`).

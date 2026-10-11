@@ -47,11 +47,21 @@ from fastapi.responses import HTMLResponse, JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
-from swinglab import config, inbox, pipeline, profiles  # noqa: E402
+from swinglab import config, features, inbox, pipeline, profiles  # noqa: E402
 
 ALLOWED = {"lidar": {".r3d", ".zip"}, "slowmo": {".mov", ".mp4", ".m4v"}, "yardstick": {".mov", ".mp4", ".m4v"}}
 MAX_BYTES = 4 * 1024 ** 3          # 4 GB per file
 CHUNK = 1024 * 1024
+
+
+def _rel(path: str | None, root: Path) -> str | None:
+    """``path`` relative to ``root`` with forward slashes (as the viewer fetches it), else as given."""
+    if not path:
+        return None
+    try:
+        return Path(path).resolve().relative_to(Path(root).resolve()).as_posix()
+    except ValueError:
+        return str(path)
 
 
 def safe_name(name: str) -> str:
@@ -114,9 +124,12 @@ class Processor:
                                       userdata=self.userdata)
             self.results = [{"id": r.get("id"), "hitter": r.get("hitter"),
                              "stages": {k: v.get("ok") for k, v in (r.get("stages") or {}).items()},
-                             "headline": (r.get("report") or {}).get("headline")} for r in done] or self.results
+                             "headline": (r.get("report") or {}).get("headline"),
+                             "file": _rel(r.get("saved_file"), self.userdata),
+                             "error": r.get("error")} for r in done] or self.results
             if done:
-                self.say(f"done: {len(done)} new swing(s)")
+                n_ok = sum(1 for r in done if r.get("saved_file"))
+                self.say(f"done: {n_ok} new swing(s)" + (f", {len(done) - n_ok} failed" if n_ok < len(done) else ""))
         except Exception as e:   # keep the server up; show the error on the page
             self.say(f"ERROR {type(e).__name__}: {e}")
         finally:
@@ -176,7 +189,8 @@ def create_app(inbox_root: str | Path | None = None, userdata: str | Path | None
     @app.get("/api/info")
     def info():
         port = app.state.port if hasattr(app.state, "port") else 8000
-        return {"phone_upload_url": f"http://{lan_ip()}:{port}/upload", "drop_root": str(userdata / "drop")}
+        return {"phone_upload_url": f"http://{lan_ip()}:{port}/upload", "drop_root": str(userdata / "drop"),
+                "key_features": list(features.KEY_FEATURES)}
 
     @app.post("/api/profiles")
     def create_profile(body: ProfileIn):

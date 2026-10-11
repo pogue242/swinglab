@@ -215,3 +215,29 @@ def test_recordings_find_the_inbox_named_summary(tmp_path):
     (d / "_recording_Wilson__lidar 1.mp4").write_bytes(b"x")
     rec = c.get("/api/profiles/wilson/recordings").json()["recordings"][0]
     assert rec["headline"] == "H" and rec["video"]["url"].endswith("_recording_Wilson__lidar 1.mp4")
+
+
+def test_failed_recording_is_retried_when_the_file_changes(tmp_path):
+    """UI request 2026-10-10: a failed analysis must not mark the recording as processed for good."""
+    import os
+    from swinglab import inbox, profiles
+    ud = tmp_path / "userdata"
+    profiles.create({"name": "Wilson", "bats": "R", "height_m": 1.8}, ud)
+    drop = ud / "drop"
+    rec_dir = drop / "Wilson"
+    rec_dir.mkdir(parents=True, exist_ok=True)
+    f = rec_dir / "swing.r3d"
+    f.write_bytes(b"broken")
+    calls = []
+
+    def fail(lidar, slowmo, hitter, **kw):
+        calls.append(lidar)
+        return {"recs": [{"id": "x", "stages": {"lidar": {"ok": False, "error": "no pose model"}}}], "summary": None}
+    out = inbox.process(drop, analyze_recording=fail, userdata=ud, log=lambda *a: None)
+    assert len(calls) == 1 and out[0]["error"] == "no pose model"
+    inbox.process(drop, analyze_recording=fail, userdata=ud, log=lambda *a: None)
+    assert len(calls) == 1                                       # unchanged file: not retried every 15 s
+    f.write_bytes(b"uploaded again")
+    os.utime(f, (f.stat().st_atime, f.stat().st_mtime + 5))
+    inbox.process(drop, analyze_recording=fail, userdata=ud, log=lambda *a: None)
+    assert len(calls) == 2                                       # changed file: retried

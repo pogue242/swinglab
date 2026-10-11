@@ -262,3 +262,13 @@ def test_unreliable_phone_measurements_are_not_graded():
     slow = scoring.analyze({**feats, "hand_speed_peak": 3.0}, models, scorers, row[model.COVARIATES].to_dict())
     assert slow["scores"]["power"] < a["scores"]["power"] and slow["grades"]["hand_speed_peak"]["grade"] == 0.0
     assert "scores_lab_model" in a and a["grading"] == "lab_range_v2"
+
+
+@needs_models
+def test_key_features_are_graded_and_the_heaviest():
+    import joblib
+    from swinglab import config, features, scoring
+    w = scoring.feature_weights(joblib.load(config.MODELS / "scorers.joblib"))
+    graded = sorted((f for f in w if f not in scoring.NOT_GRADED), key=lambda f: -w[f])
+    assert not set(features.KEY_FEATURES) & set(scoring.NOT_GRADED)
+    assert set(features.KEY_FEATURES) == set(graded[:6])

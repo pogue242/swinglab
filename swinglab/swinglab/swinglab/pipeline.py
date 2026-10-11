@@ -572,6 +572,25 @@ def analyze_session(lidar: str | Path, hitter: dict, *, use_gemini: bool = True,
     return out["recs"], out["summary"] or {"n_swings": len(out["recs"])}
 
 
+def json_safe(o):
+    """NaN / ±inf -> None, recursively (bare NaN is not valid JSON: browsers refuse the whole file)."""
+    if isinstance(o, float):
+        return o if np.isfinite(o) else None
+    if isinstance(o, dict):
+        return {k: json_safe(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [json_safe(v) for v in o]
+    if isinstance(o, np.generic):
+        return json_safe(o.item())
+    if isinstance(o, np.ndarray):
+        return json_safe(o.tolist())
+    return o
+
+
+def dump_json(o) -> str:
+    return json.dumps(json_safe(o), separators=(",", ":"), allow_nan=False)
+
+
 def save_session(summary: dict, session: str, out_root: Path | None = None, *, render_video: bool = True) -> Path:
     """Summary of a recording with 2+ swings: <out_root>/swings/<folder>/_summary_<recording>.json,
     plus the whole recording as a plain video, _recording_<recording>.mp4 (render_recording), whose
@@ -588,7 +607,7 @@ def save_session(summary: dict, session: str, out_root: Path | None = None, *, r
         except Exception as e:
             rv["error"] = f"{type(e).__name__}: {e}"[:300]
     p = d / f"_summary_{stem}.json"
-    p.write_text(json.dumps(summary, separators=(",", ":")), encoding="utf-8")
+    p.write_text(dump_json(summary), encoding="utf-8")
     rebuild_index(out_root)
     return p
 
@@ -648,7 +667,7 @@ def save_result(rec: dict, session: str, out_root: Path | None = None, *, render
     if render_video:
         render_overlay(rec, d / str(rec["id"]), out_root)
     p = d / f"{rec['id']}.json"
-    p.write_text(json.dumps(rec, separators=(",", ":")), encoding="utf-8")
+    p.write_text(dump_json(rec), encoding="utf-8")
     rebuild_index(out_root)
     return p
 

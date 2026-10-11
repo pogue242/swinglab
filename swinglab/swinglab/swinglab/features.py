@@ -45,6 +45,10 @@ FEATURES = {
     "hands_forward_contact": ("posture", "Hands out in front at contact", "ratio"),
 }
 GROUPS = ("power", "transfer", "posture")
+# Shown by default in the swing view ("Key measurements"): the graded measurement with the largest weight
+# in each group (scoring.feature_weights) plus the next three; all graded, none in scoring.NOT_GRADED.
+KEY_FEATURES = ("hand_speed_peak", "torso_yaw_fp", "hands_forward_contact",
+                "hips_drift_fp_contact", "fp_to_contact_ms", "head_drift_fp_contact")
 GROUP_LABELS = {"power": "Power", "transfer": "Sequencing", "posture": "Posture"}
 GROUP_HELP = {
     "power": "How much your body turns and how fast: the engine of bat speed.",

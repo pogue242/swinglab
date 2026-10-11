@@ -202,3 +202,12 @@ def test_record3d_export_gives_same_features_as_stray(tmp_path):
     stray_to_r3d(stray, folder, zipped=False)
     found = sorted(p.name for p in inbox.find_lidar(lid))
     assert found == ["a.r3d", "b"], found
+
+
+def test_saved_json_has_no_bare_nan(tmp_path):
+    """UI request 2026-10-11: bare NaN made browsers refuse whole swing files."""
+    rec = {"id": "n1", "analysis": {"scores": {"overall": float("nan")}}, "quality": {"r_pelvis": np.nan,
+           "a": [1.0, np.inf, np.float32(2.5)]}}
+    p = pipeline.save_result(rec, "s", out_root=tmp_path, render_video=False)
+    back = json.loads(p.read_text(encoding="utf-8"))
+    assert "NaN" not in p.read_text(encoding="utf-8") and back["quality"] == {"r_pelvis": None, "a": [1.0, None, 2.5]}

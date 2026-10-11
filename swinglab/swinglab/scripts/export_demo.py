@@ -147,6 +147,7 @@ out["status"] = {
 }
 config.WEB_DATA.mkdir(parents=True, exist_ok=True)
 app = {k: v for k, v in out.items() if k != "swings"}
+app["key_features"] = list(features.KEY_FEATURES)        # requested by UI (CONTRACT_CHANGES 2026-10-10)
 APP.write_text(json.dumps(app, separators=(",", ":")), encoding="utf-8")
 print("wrote", APP, round(APP.stat().st_size / 1e6, 2), "MB; synthetic profile:", syn_dir)
 for r in out["swings"]:
