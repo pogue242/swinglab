@@ -444,7 +444,8 @@ def ball_events(cands: list[list[tuple]], *, expected_r: float | None = None, fp
 
 def ball_hit_in_frames(frames, *, scale: float = 0.5, fps: float | None = None) -> dict:
     """Hit, miss or no ball in a video (ball_events), e.g. the LiDAR phone's own color video when
-    there is no slow-motion clip. Returns {"kind", "hit", "how", "reason", "frames_with_ball"}."""
+    there is no slow-motion clip. Returns {"kind", "hit", "how", "reason", "frames_with_ball",
+    "xy" (N, 2) ball points in full-size pixels, NaN where none)}."""
     import cv2
     cands = []
     for fr in frames:
@@ -452,7 +453,7 @@ def ball_hit_in_frames(frames, *, scale: float = 0.5, fps: float | None = None) 
         cands.append(ball_candidates(small))
     ev = ball_events(cands, fps=fps)
     return {"kind": ev["kind"], "hit": ev["kind"] == "hit", "how": ev["how"], "reason": ev["reason"],
-            "frames_with_ball": int(np.isfinite(ev["xy"][:, 0]).sum())}
+            "frames_with_ball": int(np.isfinite(ev["xy"][:, 0]).sum()), "xy": ev["xy"] / scale}
 
 
 def launch_from_flight(tb: dict, fps: float, m_per_px: float, *, n_fit: int = 8, max_skip: int = 3,
@@ -724,3 +725,100 @@ def _extent_along(gray: np.ndarray, p1: np.ndarray, p2: np.ndarray, half_band: i
         j = i - step                                  # last index above the level
         return ts[j] + (ts[i] - ts[j]) * (prof[j] - lvl) / max(prof[j] - prof[i], 1e-9)
     return float(crossing(1) - crossing(-1))
+
+
+# ---------------------------------------------------------------- object detector: is a ball in view at all?
+#
+# The blob tracker above looks for bright round things that move like a ball. On the LiDAR phone's
+# 60 fps video it also finds them on dry swings (white shoes, a bright bat end, sky through the arms:
+# TestSet2, 9 of 10 dry swings labeled hit or miss). A COCO detector that knows "sports ball" is the
+# independent check: a swing is only a hit or a miss when the detector also sees a ball in the frames
+# before contact, near where the tracker says the ball was. YOLOX-S from the OpenCV model zoo
+# (Apache-2.0, runs on cv2.dnn: no PyTorch), downloaded by scripts/get_ball_model.py.
+
+YOLO_MODEL_FILE = "object_detection_yolox_2022nov.onnx"
+YOLO_MODEL_URL = "https://huggingface.co/opencv/object_detection_yolox/resolve/main/" + YOLO_MODEL_FILE
+COCO_SPORTS_BALL, COCO_PERSON, COCO_BAT = 32, 0, 34
+YOLO_SIZE = 640
+MIN_BALL_SCORE = 0.25          # detector confidence for "sports ball"
+
+_YOLO = None
+
+
+def _yolo():
+    global _YOLO
+    if _YOLO is None:
+        import cv2
+
+        from . import config
+        path = config.MODELS / YOLO_MODEL_FILE
+        if not path.exists():
+            raise FileNotFoundError(f"{path} missing: run python scripts/get_ball_model.py")
+        _YOLO = cv2.dnn.readNet(str(path))
+        grids, strides = [], []
+        for s in (8, 16, 32):
+            n = YOLO_SIZE // s
+            yv, xv = np.meshgrid(np.arange(n), np.arange(n), indexing="ij")
+            grids.append(np.stack([xv, yv], -1).reshape(-1, 2))
+            strides.append(np.full((n * n, 1), s))
+        _YOLO_GRID[:] = [np.concatenate(grids), np.concatenate(strides)]
+    return _YOLO
+
+
+_YOLO_GRID: list = [None, None]
+
+
+def yolo_detect(frame_bgr: np.ndarray, classes: tuple[int, ...] = (COCO_SPORTS_BALL,),
+                min_score: float = MIN_BALL_SCORE) -> list[tuple[int, float, float, float, float, float]]:
+    """Objects of ``classes`` in one frame: [(class, score, x, y, w, h)] in pixels (box center and size)."""
+    import cv2
+    net = _yolo()
+    h, w = frame_bgr.shape[:2]
+    r = min(YOLO_SIZE / h, YOLO_SIZE / w)
+    pad = np.full((YOLO_SIZE, YOLO_SIZE, 3), 114, np.uint8)
+    pad[: int(h * r), : int(w * r)] = cv2.resize(frame_bgr, (int(w * r), int(h * r)), interpolation=cv2.INTER_LINEAR)
+    net.setInput(cv2.dnn.blobFromImage(pad))          # BGR, 0–255, as YOLOX was trained
+    out = net.forward()[0]
+    grid, stride = _YOLO_GRID
+    xy = (out[:, :2] + grid) * stride / r
+    wh = np.exp(out[:, 2:4]) * stride / r
+    dets = []
+    for c in classes:
+        sc = out[:, 4] * out[:, 5 + c]
+        keep = np.where(sc >= min_score)[0]
+        if not len(keep):
+            continue
+        boxes = [[float(xy[i, 0] - wh[i, 0] / 2), float(xy[i, 1] - wh[i, 1] / 2), float(wh[i, 0]), float(wh[i, 1])] for i in keep]
+        for j in np.array(cv2.dnn.NMSBoxes(boxes, sc[keep].astype(float).tolist(), min_score, 0.45)).reshape(-1):
+            i = keep[j]
+            dets.append((c, float(sc[i]), float(xy[i, 0]), float(xy[i, 1]), float(wh[i, 0]), float(wh[i, 1])))
+    return dets
+
+
+def confirm_ball(frames, tracked_xy: np.ndarray | None = None, *, every: int = 3, near_px: float = 120.0,
+                 min_frames: int = 2, detect=None) -> dict:
+    """Does the object detector see a ball in these frames (the ones before contact)?
+    Every ``every``-th frame is checked. Confirmed when a "sports ball" is found in at least
+    ``min_frames`` frames and, if the blob tracker's ball points ``tracked_xy`` (full-size pixels,
+    one row per frame, NaN = none) are given, at least one detection lies within ``near_px`` of a
+    tracked point within 3 frames. ``detect(frame) -> [(class, score, x, y, w, h)]`` replaces YOLOX
+    (tests). Returns {"confirmed", "frames_checked", "frames_with_ball", "near_track", "best_score"}."""
+    detect = detect or yolo_detect
+    checked, hits, near, best = 0, 0, False, 0.0
+    for i, fr in enumerate(frames):
+        if i % every:
+            continue
+        checked += 1
+        balls = [d for d in detect(fr) if d[0] == COCO_SPORTS_BALL]
+        if not balls:
+            continue
+        hits += 1
+        best = max(best, max(d[1] for d in balls))
+        if tracked_xy is not None and not near:
+            lo, hi = max(0, i - 3), min(len(tracked_xy), i + 4)
+            pts = tracked_xy[lo:hi]
+            pts = pts[np.isfinite(pts[:, 0])] if len(pts) else pts
+            near = any(np.hypot(*(pts - [d[2], d[3]]).T).min() <= near_px for d in balls if len(pts))
+    confirmed = hits >= min_frames and (tracked_xy is None or near)
+    return {"confirmed": bool(confirmed), "frames_checked": checked, "frames_with_ball": hits,
+            "near_track": bool(near), "best_score": round(best, 2)}

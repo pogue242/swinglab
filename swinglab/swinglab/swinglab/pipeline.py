@@ -329,10 +329,13 @@ def read_frames(video: str | Path, f0: int, f1: int):
             yield fr
 
 
-def decide_mode(rec: dict) -> None:
-    """Hit or dry swing, decided by looking for a ball, never by the user:
+def decide_mode(rec: dict, *, detect=None) -> None:
+    """Hit, miss or dry swing, decided by looking for a ball, never by the user:
     the slow-motion clip if there is one (ball seen leaving the tee), else the LiDAR phone's own
-    color video around the swing. Sets rec["mode"] ("hit" | "dry") and rec["mode_evidence"]."""
+    color video around the swing. Dry is the default: on the LiDAR video the blob tracker's hit or
+    miss only stands when the object detector (YOLOX "sports ball", ballflight.confirm_ball) also
+    sees a ball near the tracked one before contact. ``detect`` replaces YOLOX (tests).
+    Sets rec["mode"] ("hit" | "miss" | "dry"), rec["mode_evidence"] and rec["ball_check"]."""
     from . import ballflight as B
     slow = rec.get("slowmo")
     kind, ev = "none", "no video to look for a ball in: treated as a dry swing"
@@ -345,12 +348,33 @@ def decide_mode(rec: dict) -> None:
             try:
                 r = B.ball_hit_in_frames(read_frames(v["path"], *v["frames"]), fps=v.get("fps"))
                 kind, ev = r["kind"], f"LiDAR phone video: {r['reason']}"
+                if kind in ("hit", "miss"):
+                    f0, f1 = v["frames"]
+                    fc = _contact_frame(rec, v)
+                    chk = B.confirm_ball(read_frames(v["path"], f0, fc), r["xy"][: fc - f0 + 1], detect=detect)
+                    rec["ball_check"] = {"tracker": kind, **chk}
+                    if not chk["confirmed"]:
+                        kind = "none"
+                        ev = (f"LiDAR phone video: the blob tracker reported a {r['kind']}, but the ball detector "
+                              f"found no ball near it in {chk['frames_checked']} frames before contact: dry swing")
+            except FileNotFoundError as e:
+                kind, ev = "none", f"ball detector model missing ({e}): treated as a dry swing"
             except Exception as e:
-                ev = f"could not check the video for a ball ({type(e).__name__}): treated as a dry swing"
+                kind, ev = "none", f"could not check the video for a ball ({type(e).__name__}): treated as a dry swing"
     rec["mode"] = {"hit": "hit", "miss": "miss"}.get(kind, "dry")
     rec["mode_evidence"] = ev
     if "analysis" in rec:
         rec["analysis"]["mode"] = rec["mode"]
+
+
+def _contact_frame(rec: dict, v: dict) -> int:
+    """Recording frame index of this swing's contact (+0.1 s: a toss can still be in the air)."""
+    f0, f1 = v["frames"]
+    tc = v.get("t_offset", 0.0) + (rec.get("events") or {}).get("contact", 0.0) + 0.1
+    ts = np.asarray(v.get("timestamps") or [])
+    if not len(ts):
+        return f1
+    return int(np.clip(f0 + np.searchsorted(ts, tc), f0, f1))
 
 
 def contact_for(rec: dict) -> dict | None:
