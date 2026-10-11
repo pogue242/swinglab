@@ -25,6 +25,7 @@ class TrainingItem(BaseModel):
 
 class SwingReport(BaseModel):
     headline: str = Field(description="One short sentence naming the main issue or strength")
+    plain_summary: str = Field(default="", description="Opening paragraph, 3-4 short sentences, NO numbers or jargon: what the body did, for a beginner")
     what_happened: str = Field(description="2-3 sentences, citing only numbers present in the payload")
     why_it_matters: str = Field(description="1-2 sentences linking the issue to bat speed or contact")
     cue: str = Field(description="One coaching cue the hitter can think about during the next swing")

@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from .. import features
-from . import exercises
+from . import exercises, plain
 
 FOCUS_ANCHOR = {
     # feature -> (joint to highlight, phase to jump to)
@@ -54,6 +54,7 @@ def build(analysis: dict, feats: dict, hitter: dict, measured: dict | None = Non
                        "lab": "lab swing at a pitched ball (Driveline motion capture)"}.get(
             mode, "dry swing (no ball): rate form only; do not mention ball contact, exit speed or launch"),
         "elite_match": elite_block(analysis.get("elite")),
+        "plain_language": {"faults": plain.faults(analysis.get("elite")), "strengths": plain.strengths(analysis.get("elite"))},
         "scores_0_100": {k: v for k, v in analysis["scores"].items() if v is not None},
         "score_meaning": {"form": "the elite match: mean of the factors' percent of elite (see elite_match)",
                           "power / transfer / posture": "older lab-range group grades, secondary",
