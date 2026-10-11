@@ -62,21 +62,33 @@ def hitter_warnings(h: dict) -> list[str]:
 
 def lift_recording(folder: str | Path, *, pose_model: str | Path | None = None, keypoints_fn=None,
                    min_vis: float = 0.5, height_m: float | None = None, bone_fallback: bool = True,
-                   pose_fps: float | None = None):
+                   pose_fps: float | None = None, use_mediapipe_3d: bool = True):
     """Stray Scanner folder or Record3D export -> (timestamps, cleaned world-frame joints, quality).
     Pose runs once. Keypoints below ``min_vis`` MediaPipe visibility get no depth sample; with
-    ``bone_fallback`` a limb joint without usable depth is placed by bone length (capture.lift_keypoints)."""
+    ``bone_fallback`` a limb joint without usable depth is placed by bone length (capture.lift_keypoints).
+    With MediaPipe (no ``keypoints_fn``) and ``use_mediapipe_3d``, the joints are MediaPipe's 3D pose
+    anchored by the LiDAR (capture.lift_world); quality["lift"] says which was used."""
     cap = capture.load_any(folder)
     pose_model = pose_model or config.MODELS / "pose_landmarker_heavy.task"
     # pose on every n-th frame: the model works at config.PHONE_FPS (30) and MediaPipe is the slowest
     # stage (~12 frames/s on a laptop CPU), so a 60 fps Record3D clip needs only every second frame
     every = 1 if keypoints_fn else max(1, int(round(cap.fps / (pose_fps or config.PHONE_FPS))))
-    kps, size = (keypoints_fn or (lambda v: capture.mediapipe_keypoints(v, pose_model, every=every, fps=cap.fps)))(cap.video)
+    world: dict = {}
+    kps, size = (keypoints_fn or (lambda v: capture.mediapipe_keypoints(v, pose_model, every=every, fps=cap.fps,
+                                                                        world=world)))(cap.video)
     lift_info: dict = {}
     joints = capture.lift_keypoints(cap, kps, size, min_vis=min_vis, height_m=height_m,
                                     bone_fallback=bone_fallback, info=lift_info)
     valid = float(np.mean([np.isfinite(v[:, 0]).mean() for v in joints.values()]))
     joints, replaced = capture.clean_joints(joints, cap.timestamps)
+    # body shape from MediaPipe 3D, position from the LiDAR (lift_world); depth-only joints if it can't anchor
+    hybrid = capture.lift_world(cap, world, joints, info=lift_info) if world and use_mediapipe_3d else None
+    if hybrid is not None:
+        joints = hybrid
+        # bone-length placement only shaped the LiDAR anchor here, not the joints: keep it out of the warnings
+        lift_info["depth_placed_by_bone_length"] = lift_info.pop("placed_by_bone_length", {})
+    else:
+        lift_info["lift"] = "lidar_depth"
     quality = {"source_app": cap.kind, "pose_frames": len(kps), "frames": cap.n, "capture_fps": round(cap.fps, 1),
                "duration_s": round(float(cap.timestamps[-1] - cap.timestamps[0]), 2),
                "valid_joint_fraction": round(valid, 3),
@@ -329,10 +341,13 @@ def read_frames(video: str | Path, f0: int, f1: int):
             yield fr
 
 
-def decide_mode(rec: dict) -> None:
-    """Hit or dry swing, decided by looking for a ball, never by the user:
+def decide_mode(rec: dict, *, detect=None) -> None:
+    """Hit, miss or dry swing, decided by looking for a ball, never by the user:
     the slow-motion clip if there is one (ball seen leaving the tee), else the LiDAR phone's own
-    color video around the swing. Sets rec["mode"] ("hit" | "dry") and rec["mode_evidence"]."""
+    color video around the swing. Dry is the default: on the LiDAR video the blob tracker's hit or
+    miss only stands when the object detector (YOLOX "sports ball", ballflight.confirm_ball) also
+    sees a ball near the tracked one before contact. ``detect`` replaces YOLOX (tests).
+    Sets rec["mode"] ("hit" | "miss" | "dry"), rec["mode_evidence"] and rec["ball_check"]."""
     from . import ballflight as B
     slow = rec.get("slowmo")
     kind, ev = "none", "no video to look for a ball in: treated as a dry swing"
@@ -345,12 +360,33 @@ def decide_mode(rec: dict) -> None:
             try:
                 r = B.ball_hit_in_frames(read_frames(v["path"], *v["frames"]), fps=v.get("fps"))
                 kind, ev = r["kind"], f"LiDAR phone video: {r['reason']}"
+                if kind in ("hit", "miss"):
+                    f0, f1 = v["frames"]
+                    fc = _contact_frame(rec, v)
+                    chk = B.confirm_ball(read_frames(v["path"], f0, fc), r["xy"][: fc - f0 + 1], detect=detect)
+                    rec["ball_check"] = {"tracker": kind, **chk}
+                    if not chk["confirmed"]:
+                        kind = "none"
+                        ev = (f"LiDAR phone video: the blob tracker reported a {r['kind']}, but the ball detector "
+                              f"found no ball near it in {chk['frames_checked']} frames before contact: dry swing")
+            except FileNotFoundError as e:
+                kind, ev = "none", f"ball detector model missing ({e}): treated as a dry swing"
             except Exception as e:
-                ev = f"could not check the video for a ball ({type(e).__name__}): treated as a dry swing"
+                kind, ev = "none", f"could not check the video for a ball ({type(e).__name__}): treated as a dry swing"
     rec["mode"] = {"hit": "hit", "miss": "miss"}.get(kind, "dry")
     rec["mode_evidence"] = ev
     if "analysis" in rec:
         rec["analysis"]["mode"] = rec["mode"]
+
+
+def _contact_frame(rec: dict, v: dict) -> int:
+    """Recording frame index of this swing's contact (+0.1 s: a toss can still be in the air)."""
+    f0, f1 = v["frames"]
+    tc = v.get("t_offset", 0.0) + (rec.get("events") or {}).get("contact", 0.0) + 0.1
+    ts = np.asarray(v.get("timestamps") or [])
+    if not len(ts):
+        return f1
+    return int(np.clip(f0 + np.searchsorted(ts, tc), f0, f1))
 
 
 def contact_for(rec: dict) -> dict | None:
@@ -466,7 +502,7 @@ def analyze_recording(lidar: str | Path | None, slowmo: str | Path | None, hitte
                           "stages": {"lidar": {"ok": False, "error": f"{type(e).__name__}: {e}"}}}],
                 "summary": None, "n_swings": 0}
     t, joints, q = lifted
-    wins = session.find_swings(t, joints)
+    wins = session.find_swings(t, joints, bats=hitter["bats"])
     recs = []
     for k, w in enumerate(wins or [None]):
         rid = Path(lidar).stem if len(wins) <= 1 else f"{Path(lidar).stem}-{k + 1:02d}"
@@ -474,14 +510,19 @@ def analyze_recording(lidar: str | Path | None, slowmo: str | Path | None, hitte
             ts, js = session.cut(t, joints, w) if w is not None else (t, joints)
             r = analyze_joints(ts, js, hitter, rid, q)
             if w is None:
-                r["warnings"].append("no clear swing found (hand speed never reached a swing's); analyzed the whole clip")
+                r["warnings"].append("no complete swing found (hand speed and shoulder turn never reached a swing's; "
+                                     "the recording may start after the swing); analyzed the whole clip, numbers unreliable")
             else:
                 r["window"] = asdict(w)
+                if w.partial:
+                    r["warnings"].append("the recording starts mid-swing: the stance and load were not filmed, so "
+                                         "stance, stride and timing numbers for this swing are unreliable")
             r["stages"] = {"lidar": {"ok": True, **r["quality"]}}
         except Exception as e:
             r = {"id": rid, "hitter": hitter.get("name", ""), "window": asdict(w) if w else None,
                  "stages": {"lidar": {"ok": False, "error": f"{type(e).__name__}: {e}", "trace": traceback.format_exc()[-800:]}}}
         r["recording"] = Path(lidar).name
+        r["recording_t0"] = float(t[0])          # window times minus this = seconds into the recording's video
         recs.append(r)
     good = [r for r in recs if "analysis" in r]
     assigned, matching = {}, None
@@ -504,6 +545,13 @@ def analyze_recording(lidar: str | Path | None, slowmo: str | Path | None, hitte
                        else (cues.session_report(summary), {"source": "template"}))
         summary.update(hitter=hitter.get("name", ""), report=srep.model_dump(), report_source=sinfo,
                        warnings=hitter_warnings(hitter), recording=Path(lidar).name)
+        v = q.get("_video") or {}
+        if v.get("path"):
+            summary["recording_video"] = {"source": v["path"], "fps": v.get("fps"), "t0": float(t[0]),
+                                          "swings": [{"id": r["id"], **{k: round(r["window"][k] - float(t[0]), 3)
+                                                                        for k in ("start", "peak", "end")},
+                                                      "partial": r["window"].get("partial", False)}
+                                                     for r in good if r.get("window")]}
     return {"recs": recs, "summary": summary, "n_swings": len(wins)}
 
 
@@ -524,15 +572,51 @@ def analyze_session(lidar: str | Path, hitter: dict, *, use_gemini: bool = True,
     return out["recs"], out["summary"] or {"n_swings": len(out["recs"])}
 
 
-def save_session(summary: dict, session: str, out_root: Path | None = None) -> Path:
-    """Summary of a recording with 2+ swings: <out_root>/swings/<folder>/_summary_<recording>.json."""
+def save_session(summary: dict, session: str, out_root: Path | None = None, *, render_video: bool = True) -> Path:
+    """Summary of a recording with 2+ swings: <out_root>/swings/<folder>/_summary_<recording>.json,
+    plus the whole recording as a plain video, _recording_<recording>.mp4 (render_recording), whose
+    path goes into summary["recording_video"]["path"] (relative to out_root)."""
     out_root = Path(out_root or config.USERDATA)
     d = out_root / "swings" / session
     d.mkdir(parents=True, exist_ok=True)
-    p = d / f"_summary_{Path(str(summary.get('recording') or 'recording')).stem}.json"
+    stem = Path(str(summary.get("recording") or "recording")).stem
+    rv = summary.get("recording_video")
+    if render_video and rv and rv.get("source"):
+        try:
+            path = render_recording(rv["source"], d / f"_recording_{stem}", fps=rv.get("fps") or 60.0)
+            rv["path"] = path.relative_to(out_root).as_posix()
+        except Exception as e:
+            rv["error"] = f"{type(e).__name__}: {e}"[:300]
+    p = d / f"_summary_{stem}.json"
     p.write_text(json.dumps(summary, separators=(",", ":")), encoding="utf-8")
     rebuild_index(out_root)
     return p
+
+
+def render_recording(source: str | Path, out_base: Path, *, fps: float = 60.0, out_fps: float = 30.0,
+                     height: int = 960) -> Path:
+    """The whole recording's color video as a plain H.264 MP4 (``out_base`` + .mp4), every
+    fps/out_fps-th frame, scaled to ``height`` px: what the viewer's whole-recording view plays.
+    Video second s = recording time t0 + s (summary["recording_video"]["t0"])."""
+    import cv2
+    from .render import open_writer
+    step = max(1, int(round(fps / out_fps)))
+    writer = path = None
+    try:
+        for i, fr in enumerate(capture.iter_frames(source)):
+            if i % step:
+                continue
+            h, w = fr.shape[:2]
+            size = (int(round(w * height / h / 2)) * 2, height)
+            if writer is None:
+                writer, path, _ = open_writer(out_base, fps / step, size)
+            writer.write(cv2.resize(fr, size, interpolation=cv2.INTER_AREA))
+    finally:
+        if writer is not None:
+            writer.release()
+    if path is None:
+        raise ValueError(f"no frames in {source}")
+    return path
 
 
 def render_overlay(rec: dict, out_base: Path, out_root: Path) -> None:

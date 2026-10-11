@@ -168,3 +168,52 @@ def swing_summaries(pid: str, r=None) -> list[dict]:
                     "headline": (rec.get("report") or {}).get("headline"), "has_video": bool(rec.get("overlay")),
                     "quality_ok": not any("varies" in w or "placed from bone length" in w for w in rec.get("warnings", []))})
     return sorted(out, key=lambda x: (x["recorded_at"] or "", x["id"] or ""))
+
+
+def recordings(pid: str, r=None) -> list[dict]:
+    """A profile's swings grouped by the recording they came from (the whole-recording view), oldest
+    first. Each: {"recording", "n_swings", "recorded_at", "summary" (file name of _summary_<rec>.json
+    or None), "headline", "form" (mean/best/worst), "video" ({"file", "t0"} of _recording_<rec>.mp4:
+    the whole recording, or None), "swings": [{"id", "file", "video_file" (annotated swing video),
+    "t" ({start, peak, end}: seconds into the whole-recording video), "partial", "mode", "scores",
+    "focus" (label)}]}. Swings analyzed before recordings were tracked (no "recording" field) are
+    grouped under their own id."""
+    d = swings_dir(pid, r)
+    groups: dict[str, list[dict]] = {}
+    for f in sorted(d.glob("*.json")):
+        if f.name.startswith("_"):
+            continue
+        try:
+            rec = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        name = rec.get("recording") or rec.get("id") or f.stem
+        w = rec.get("window") or {}
+        t0 = rec.get("recording_t0")
+        an = rec.get("analysis") or {}
+        groups.setdefault(name, []).append({
+            "id": rec.get("id"), "file": f.name,
+            "video_file": Path(rec["overlay"]["path"]).name if (rec.get("overlay") or {}).get("path") else None,
+            "t": {k: round(w[k] - t0, 3) for k in ("start", "peak", "end")} if w and t0 is not None else None,
+            "partial": bool(w.get("partial")), "mode": rec.get("mode", "dry"), "scores": an.get("scores") or {},
+            "focus": (an.get("focus") or {}).get("label"),
+            "recorded_at": rec.get("recorded_at") or rec.get("analyzed_at")})
+    out = []
+    for name, sw in groups.items():
+        sw.sort(key=lambda x: ((x["t"] or {}).get("peak", 0.0), x["id"] or ""))
+        stem = Path(name).stem
+        summ = d / f"_summary_{stem}.json"
+        sm = {}
+        if summ.exists():
+            try:
+                sm = json.loads(summ.read_text(encoding="utf-8"))
+            except Exception:
+                sm = {}
+        rv = sm.get("recording_video") or {}
+        video = d / f"_recording_{stem}.mp4"
+        out.append({"recording": name, "n_swings": len(sw), "recorded_at": min((x["recorded_at"] or "") for x in sw) or None,
+                    "summary": summ.name if summ.exists() else None,
+                    "headline": (sm.get("report") or {}).get("headline"), "form": sm.get("form_score"),
+                    "video": {"file": video.name, "t0": rv.get("t0")} if video.exists() else None,
+                    "swings": [{k: v for k, v in x.items() if k != "recorded_at"} for x in sw]})
+    return sorted(out, key=lambda x: (x["recorded_at"] or "", x["recording"]))

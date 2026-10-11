@@ -6,6 +6,7 @@ TestSet2/
 **/data/raw/
 **/data/processed/
 **/data/models/*.task
+**/data/models/*.onnx
 
 # Secrets and environments
 **/.env

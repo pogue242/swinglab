@@ -1,5 +1,6 @@
 """Coach: payload -> report, with Gemini mocked (no API key needed)."""
 import json
+import numpy as np
 from types import SimpleNamespace
 
 import pytest
@@ -230,3 +231,34 @@ def test_gemini_html_entities_are_unescaped():
 def test_number_check_reads_payload_keys():
     from swinglab.coach import numbers
     assert numbers.unsupported({"trend": "down 1.2 mph per 10 swings"}, {"trend_per_10_swings": -1.2}) == []
+
+
+def test_grades_follow_the_lab_spread():
+    from swinglab import scoring
+    rng = {"p2.5": 0.0, "p10": 10.0, "p25": 25.0, "p50": 50.0, "p75": 75.0, "p90": 90.0, "p97.5": 100.0}
+    assert scoring.grade_feature("hand_speed_peak", 50.0, {**rng, "better": "higher"}) == 50.0
+    assert scoring.grade_feature("hand_speed_peak", 120.0, {**rng, "better": "higher"}) == 100.0
+    assert scoring.grade_feature("lead_knee_flex_contact", 90.0, {**rng, "better": "lower"}) == 10.0
+    r = {**rng, "better": "range"}
+    assert scoring.grade_feature("stance_width", 60.0, r) == 100.0               # inside the middle half
+    assert scoring.grade_feature("stance_width", 12.5, r) == 50.0                # halfway to p2.5
+    assert scoring.grade_feature("stance_width", 110.0, r) == 0.0
+    assert scoring.grade_feature("seq_order_ok", 1.0, r) == 100.0 and scoring.grade_feature("stance_width", np.nan, r) is None
+
+
+@needs_models
+def test_unreliable_phone_measurements_are_not_graded():
+    """TestSet2: rotation speeds read 2-3x low from the front camera; they must not sink Power."""
+    import joblib
+    from swinglab import config, model, scoring
+    models, scorers = model.load(), joblib.load(config.MODELS / "scorers.joblib")
+    row = model.load_table().iloc[0]
+    feats = row[model.MECHANICS].to_dict()
+    a = scoring.analyze(feats, models, scorers, row[model.COVARIATES].to_dict())
+    b = scoring.analyze({**feats, "pelvis_vel_peak": 150.0, "torso_vel_peak": 300.0}, models, scorers,
+                        row[model.COVARIATES].to_dict())
+    assert a["scores"] == b["scores"] and "pelvis_vel_peak" not in a["grades"]
+    assert {n["feature"] for n in a["not_graded"]} == set(scoring.NOT_GRADED)
+    slow = scoring.analyze({**feats, "hand_speed_peak": 3.0}, models, scorers, row[model.COVARIATES].to_dict())
+    assert slow["scores"]["power"] < a["scores"]["power"] and slow["grades"]["hand_speed_peak"]["grade"] == 0.0
+    assert "scores_lab_model" in a and a["grading"] == "lab_range_v2"

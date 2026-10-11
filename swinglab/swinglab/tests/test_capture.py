@@ -101,3 +101,35 @@ def test_real_record3d_orientation_and_K():
         Wp = (capture.quat_to_R(cap.cam_quat[cap.n // 2]) @ (np.diag([1, -1, -1]) @ P.T)).T
         normal = np.linalg.svd(Wp - Wp.mean(0))[2][-1]
         assert abs(normal[1]) > 0.95, (path.name, normal)
+
+
+def test_lift_world_keeps_the_body_shape_when_depth_flips_the_far_side():
+    """MediaPipe 3D gives the shape, the LiDAR torso the position (capture.lift_world). Depth under a
+    hidden shoulder/hip lands on the near side; the lifted joints must not follow it."""
+    from types import SimpleNamespace
+    from test_kinematics import body_from_yaw
+    fps, n = 60.0, 120
+    t = np.arange(n) / fps
+    yaw = np.radians(160) * np.clip((t - 0.8) / 0.3, 0, 1)
+    Jz = body_from_yaw(t, yaw)
+    truth = {k: np.c_[v[:, 0], v[:, 2], -v[:, 1]] + [0.2, -1.0, -3.5] for k, v in Jz.items()}   # ARKit world, camera at 0
+    mid = 0.5 * (truth["l_hip"] + truth["r_hip"])
+    flip = np.diag([1.0, -1.0, -1.0])
+    world = {i: {k: tuple(flip @ ((truth[k][i] - mid[i]) / 1.1)) for k in truth} for i in range(n)}  # MediaPipe: 10% small
+    rng = np.random.default_rng(0)
+    depth = {k: v + rng.normal(0, 0.01, v.shape) for k, v in truth.items()}
+    for a, b in (("l_shoulder", "r_shoulder"), ("l_hip", "r_hip")):        # far joint's depth = near joint's
+        far = truth[a][:, 2] < truth[b][:, 2]
+        for k_far, k_near in ((a, b), (b, a)):
+            m = far if k_far == a else ~far
+            depth[k_far][m, 2] = truth[k_near][m, 2]
+    cap = SimpleNamespace(n=n, fps=fps, cam_quat=np.tile([0.0, 0, 0, 1], (n, 1)), cam_pos=np.zeros((n, 3)))
+    info = {}
+    out = capture.lift_world(cap, world, depth, info=info)
+    assert info["lift"] == "mediapipe_3d_with_lidar_anchor" and abs(info["mediapipe_scale"] - 1.1) < 0.05
+    sh = out["l_shoulder"] - out["r_shoulder"]
+    turn = np.degrees(np.unwrap(np.arctan2(-sh[:, 2], sh[:, 0])))
+    assert abs(np.ptp(turn) - 160) < 3 and np.all(np.abs(np.diff(turn)) < 15)      # smooth, full turn
+    for k in truth:
+        assert np.nanmedian(np.linalg.norm(out[k] - truth[k], axis=1)) < 0.06, k
+    assert capture.lift_world(cap, {}, depth) is None

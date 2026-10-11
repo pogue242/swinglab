@@ -92,3 +92,40 @@ def test_scenery_is_not_a_ball():
         frames.append(img)
     r = B.ball_hit_in_frames(frames, scale=1.0, fps=60)
     assert r["kind"] == "none", r
+
+
+def _fake_detector(ball_at: dict[int, tuple[float, float]]):
+    """detect(frame) for confirm_ball: frames are ints here; a ball at ball_at[frame]."""
+    def detect(fr):
+        return [(B.COCO_SPORTS_BALL, 0.6, *ball_at[fr], 20.0, 20.0)] if fr in ball_at else []
+    return detect
+
+
+def test_confirm_ball_needs_detections_near_the_tracked_ball():
+    frames = list(range(30))
+    xy = np.full((30, 2), np.nan)
+    xy[:, :] = [500.0, 300.0]                                  # tracker: ball resting at (500, 300)
+    on_tee = _fake_detector({i: (505.0, 302.0) for i in range(0, 30, 3)})
+    assert B.confirm_ball(frames, xy, detect=on_tee)["confirmed"]
+    elsewhere = _fake_detector({i: (100.0, 900.0) for i in range(0, 30, 3)})   # a ball on the ground, far away
+    r = B.confirm_ball(frames, xy, detect=elsewhere)
+    assert not r["confirmed"] and r["frames_with_ball"] == 10 and not r["near_track"]
+    once = _fake_detector({3: (505.0, 302.0)})                  # a single detection is not enough
+    assert not B.confirm_ball(frames, xy, detect=once)["confirmed"]
+    assert not B.confirm_ball(frames, xy, detect=_fake_detector({}))["confirmed"]
+
+
+def test_tracker_hit_without_a_detected_ball_is_a_dry_swing(monkeypatch):
+    """TestSet2: dry swings were labeled hit/miss from bright blobs; the detector must veto them."""
+    xy = np.full((40, 2), np.nan)
+    xy[5:20] = [400.0, 500.0]
+    monkeypatch.setattr(B, "ball_hit_in_frames", lambda frames, fps=None: (list(frames), {
+        "kind": "hit", "hit": True, "how": "toss", "reason": "the ball's path broke", "frames_with_ball": 15, "xy": xy})[1])
+    monkeypatch.setattr(pipeline, "read_frames", lambda path, f0, f1: iter(range(f0, f1 + 1)))
+    rec = {"video": {"path": "x.mp4", "frames": [0, 39], "fps": 60.0, "t_offset": 0.0,
+                     "timestamps": [i / 60 for i in range(40)]},
+           "events": {"contact": 0.4}, "analysis": {"scores": {}}}
+    pipeline.decide_mode(rec, detect=_fake_detector({}))
+    assert rec["mode"] == "dry" and "found no ball" in rec["mode_evidence"] and rec["ball_check"]["tracker"] == "hit"
+    pipeline.decide_mode(rec, detect=_fake_detector({i: (402.0, 498.0) for i in range(0, 40)}))
+    assert rec["mode"] == "hit" and rec["ball_check"]["confirmed"]
