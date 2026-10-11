@@ -1,0 +1,12 @@
+data/raw/
+data/processed/
+data/captures/
+data/models/*.task
+data/models/*.onnx
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.env
+.venv/
+data/inbox/
+userdata/

@@ -1,0 +1,24 @@
+[project]
+name = "swinglab"
+version = "0.1.0"
+description = "3D baseball swing analysis from phone video + LiDAR, trained on Driveline OpenBiomechanics"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy", "pandas", "pyarrow", "scipy", "scikit-learn", "joblib", "pydantic>=2", "openpyxl",
+]
+
+[project.optional-dependencies]
+phone = ["opencv-python", "mediapipe", "lzfse", "imageio-ffmpeg"]
+gemini = ["google-genai"]
+server = ["fastapi", "uvicorn", "python-multipart"]
+live = ["record3d"]   # USB streaming from the iPhone (the viewer's Record swing, swinglab/live.py)
+dev = ["pytest"]
+
+[tool.setuptools]
+packages = ["swinglab", "swinglab.coach"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["live: calls the real Gemini API (needs GEMINI_API_KEY); run with -m live",
+           "real_ball_check: uses the real ballflight.confirm_ball (not the test pass-through)"]
+addopts = "-m 'not live'"

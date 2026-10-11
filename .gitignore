@@ -1,0 +1,25 @@
+# Personal recordings and user data (never pushed)
+TestSet2/
+TestSet3/
+TestSet4/
+**/userdata/
+**/data/captures/
+**/data/captures.zip
+**/data/inbox/
+**/data/raw/
+**/data/processed/
+**/data/models/*.task
+**/data/models/*.onnx
+
+# Local-only docs
+**/docs/RECORDING_PLAN.md
+
+# Secrets and environments
+**/.env
+**/.venv/
+
+# Caches
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.claude/settings.local.json

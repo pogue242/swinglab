@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SwingLab Upload</title>
+<style>
+:root{--bg:#F6F6F4;--panel:#fff;--ink:#0C2340;--muted:#5C6670;--line:#E3E3E0;--seam:#BF0D3E;--good:#2E7D4F;--bad:#BF0D3E;color-scheme:light}
+header{background:#0C2340;color:#fff;margin:-16px -16px 16px;padding:14px 16px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{max-width:560px;margin:0 auto;padding:16px}h1{font-size:24px;margin:4px 0 12px}h1 span{color:var(--seam)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+label{display:block;font-weight:600;margin:12px 0 6px}select,input[type=text]{width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+.kinds{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.kinds label{margin:0;font-weight:500;border:1px solid var(--line);border-radius:8px;padding:10px;text-align:center}
+.kinds input{display:none}.kinds input:checked+span{color:var(--seam);font-weight:700}
+input[type=file]{width:100%;margin-top:4px}button{width:100%;font:600 17px system-ui;padding:14px;border:0;border-radius:10px;background:var(--seam);color:#fff;margin-top:14px}
+button.sec{background:transparent;color:var(--ink);border:1px solid var(--line)}progress{width:100%;height:14px;margin-top:10px}
+.hint{color:var(--muted);font-size:14px}.ok{color:var(--good)}.err{color:var(--bad)}pre{white-space:pre-wrap;font-size:12px;color:var(--muted);max-height:240px;overflow:auto}
+</style></head><body><div class="wrap">
+<header><h1 style="margin:0;color:#fff">Swing<span>Lab</span> upload</h1></header>
+<div class="card">
+<label for="session">Session</label><input type="text" id="session" list="sessions" autocomplete="off"><datalist id="sessions"></datalist>
+<label for="hitter">Hitter</label><select id="hitter"></select>
+<label>What is it?</label>
+<div class="kinds" style="grid-template-columns:repeat(2,1fr)">
+ <label><input type="radio" name="kind" value="auto" checked><span>Automatic<br><small>by file type</small></span></label>
+ <label><input type="radio" name="kind" value="lidar"><span>LiDAR<br><small>.r3d or .zip</small></span></label>
+ <label><input type="radio" name="kind" value="slowmo"><span>Slow motion<br><small>.mov / .mp4</small></span></label>
+ <label><input type="radio" name="kind" value="yardstick"><span>Yardstick<br><small>scale clip</small></span></label>
+</div>
+<label for="files">Files</label><input type="file" id="files" multiple>
+<p class="hint">LiDAR: Record3D → share the .r3d; Stray Scanner → zip the recording folder. Slow motion: the original from Photos (not a WhatsApp/Messages copy).</p>
+<button id="go">Upload</button><progress id="bar" max="100" value="0" hidden></progress>
+<p id="msg" class="hint" role="status"></p>
+</div>
+<div class="card"><b>Processing</b> <span id="state" class="hint"></span>
+<button class="sec" id="proc">Process now</button><pre id="log"></pre>
+<p class="hint">Results appear in the viewer: <a href="/">open the viewer</a>.</p></div>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+fetch("/api/hitters").then(r=>r.json()).then(d=>{
+  $("#session").value=d.today;$("#sessions").innerHTML=d.sessions.map(s=>`<option value="${s}">`).join("");
+  $("#hitter").innerHTML=d.hitters.map(h=>`<option>${h}</option>`).join("")});
+$("#go").onclick=()=>{
+  const files=$("#files").files;if(!files.length){$("#msg").textContent="Choose a file first.";return}
+  const fd=new FormData();for(const f of files)fd.append("files",f);
+  fd.append("session",$("#session").value);fd.append("hitter",$("#hitter").value);
+  fd.append("kind",document.querySelector("input[name=kind]:checked").value);
+  const x=new XMLHttpRequest();x.open("POST","/api/upload");$("#bar").hidden=false;$("#go").disabled=true;
+  x.upload.onprogress=e=>{if(e.lengthComputable)$("#bar").value=100*e.loaded/e.total};
+  x.onload=()=>{$("#go").disabled=false;let d={};try{d=JSON.parse(x.responseText)}catch(e){}
+    if(x.status===200){$("#msg").className="ok";$("#msg").textContent=`Saved ${d.saved.map(s=>s.name).join(", ")} for ${d.hitter||d.session}. Analysis starts in ${d.processing_in_s} s; it shows up in the viewer on the laptop.`;$("#files").value=""}
+    else{$("#msg").className="err";$("#msg").textContent=d.error||("Upload failed ("+x.status+")")}};
+  x.onerror=()=>{$("#go").disabled=false;$("#msg").className="err";$("#msg").textContent="Upload failed: is the laptop on the same Wi-Fi?"};
+  x.send(fd)};
+$("#proc").onclick=()=>fetch("/api/process",{method:"POST"});
+function poll(){fetch("/api/status").then(r=>r.json()).then(s=>{$("#state").textContent=s.running?"· running…":(s.last_run?"· last run "+s.last_run:"");$("#log").textContent=s.log.join("\n")}).catch(()=>{})}
+poll();setInterval(poll,3000);
+</script></body></html>

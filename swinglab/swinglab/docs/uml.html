@@ -1,0 +1,301 @@
+<title>SwingLab UML</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<style>
+/* Layout: one column of diagrams, each in its own scroll box */
+:root{--bg:#f3f4f1;--panel:#ffffff;--ink:#1b2027;--muted:#5d6670;--line:#dcdfd8;--seam:#c2362d;
+  --diagram:#ffffff;--display:"Barlow Condensed","Arial Narrow",sans-serif;--body:"IBM Plex Sans",system-ui,sans-serif}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#13171c;--panel:#1b2128;--ink:#e6e9ec;--muted:#9aa4ae;--line:#2b333c;--seam:#ff6b5e;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#13171c;--panel:#1b2128;--ink:#e6e9ec;--muted:#9aa4ae;--line:#2b333c;--seam:#ff6b5e;color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--body);margin:0}
+.wrap{max-width:1200px;margin:0 auto;padding-inline:20px;padding-block:20px 48px}
+h1{font:700 32px/1 var(--display);text-transform:uppercase;letter-spacing:.02em;margin:0 0 6px}
+h1 span{color:var(--seam)}
+.lead{color:var(--muted);margin:0 0 20px;max-width:70ch}
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+h2{font:600 20px/1.2 var(--display);letter-spacing:.06em;text-transform:uppercase;margin:0 0 4px;color:var(--muted)}
+section p{margin:0 0 10px;color:var(--muted);font-size:14px}
+.dia{overflow-x:auto}
+pre.mermaid{background:var(--diagram);border-radius:8px;padding:12px;margin:0;min-width:640px}
+</style>
+<div class="wrap">
+<h1>Swing<span>Lab</span> UML</h1>
+<p class="lead">Architecture of the 3D swing analyzer as built on 2026-10-09: phone capture, Driveline-trained models, Gemini coach, sessions and the shared-folder pipeline. Source: docs/SPEC.md.</p>
+<section><h2>Components</h2><p>How the phones, cloud services and laptop modules connect.</p><div class="dia"><pre class="mermaid">flowchart LR
+  subgraph Phones
+    A[iPhone 17 Pro&lt;br/&gt;Record3D or Stray Scanner&lt;br/&gt;RGB + LiDAR + pose]
+    B[Phone 2&lt;br/&gt;240 fps slow motion]
+  end
+  subgraph Cloud
+    G[(Google Drive&lt;br/&gt;SwingLab folder)]
+    GM[Gemini API]
+    EL[ElevenLabs API]
+  end
+  subgraph Laptop
+    IN[inbox.py&lt;br/&gt;scan + pair]
+    PL[pipeline.py]
+    CP[capture.py&lt;br/&gt;MediaPipe + depth lift]
+    BF[ballflight.py]
+    SK[skeleton + kinematics&lt;br/&gt;+ features]
+    MD[model + scoring&lt;br/&gt;trained on Driveline]
+    SS[session.py]
+    CO[coach/&lt;br/&gt;payload, gemini, cues,&lt;br/&gt;exercises]
+    WEB[web viewer&lt;br/&gt;three.js]
+  end
+  DL[(Driveline OBP)] --&gt; MD
+  A --&gt; G
+  B --&gt; G
+  G --&gt; IN --&gt; PL
+  PL --&gt; CP --&gt; SK --&gt; MD
+  PL --&gt; BF
+  PL --&gt; SS
+  MD --&gt; CO --&gt; GM
+  CO -.stretch.-&gt; EL
+  PL --&gt; WEB
+</pre></div></section>
+<section><h2>Class diagram</h2><p>Data classes, modules and how they depend on each other.</p><div class="dia"><pre class="mermaid">classDiagram
+  direction LR
+  class Swing {
+    +id : str
+    +time : ndarray
+    +joints : dict
+    +events : dict
+  }
+  class Skeleton {
+    +time : ndarray
+    +J : ndarray T x 13 x 3
+    +names : list
+    +bats : str
+    +height_m : float
+    +fps() float
+    +mid_hip() ndarray
+  }
+  class Capture {
+    +video : Path
+    +timestamps : ndarray
+    +K_rgb : ndarray
+    +cam_pos : ndarray
+    +cam_quat : ndarray
+    +depth(i) ndarray
+  }
+  class SwingModel {
+    +target : str
+    +inputs : list
+    +gbm : Ridge pipeline
+    +tree : DecisionTree
+    +predict(row) float
+    +tree_path(row) list
+  }
+  class GroupScorer {
+    +group : str
+    +feats : list
+    +score(row) tuple
+    +contributions(row) list
+  }
+  class SwingWindow {
+    +index : int
+    +start : float
+    +peak : float
+    +end : float
+  }
+  class Pair {
+    +session : str
+    +swing : str
+    +lidar : str
+    +slowmo : str
+    +hitter : str
+    +method : str
+  }
+  class Launch {
+    +contact_frame : int
+    +exit_speed_mph : float
+    +launch_angle_deg : float
+  }
+  class Exercise {
+    +id : str
+    +name : str
+    +areas : tuple
+    +kind : str
+    +prescription : str
+  }
+  class SwingReport {
+    +headline : str
+    +what_happened : str
+    +cue : str
+    +drill : Drill
+    +focus_joint : str
+    +focus_phase : str
+    +diagram : str
+    +training_plan : list
+  }
+  class SessionReport {
+    +headline : str
+    +trend : str
+    +consistency : str
+    +recurring_issue : str
+    +best_swing_id : str
+    +next_session_focus : str
+  }
+  class TrainingItem {
+    +exercise_id : str
+    +why : str
+    +prescription : str
+  }
+  class Drill {
+    +name : str
+    +steps : list
+  }
+  class obp {
+    &lt;&lt;module&gt;&gt;
+    +download(groups)
+    +load_metadata()
+    +iter_swings() Swing
+  }
+  class skeleton {
+    &lt;&lt;module&gt;&gt;
+    +build(time, joints, bats, up, fps) Skeleton
+    +from_obp(swing, bats, height) Skeleton
+  }
+  class kinematics {
+    &lt;&lt;module&gt;&gt;
+    +series(sk) dict
+    +detect_events(sk) dict
+    +peak_offset(y, i) float
+  }
+  class features {
+    &lt;&lt;module&gt;&gt;
+    +FEATURES
+    +compute(sk, events) dict
+  }
+  class capture {
+    &lt;&lt;module&gt;&gt;
+    +load_any(path) Capture
+    +load_stray(folder) Capture
+    +load_record3d(r3d) Capture
+    +mediapipe_keypoints(video, model)
+    +lift_keypoints(cap, kps) dict
+    +clean_joints(joints, t) dict
+  }
+  class ballflight {
+    &lt;&lt;module&gt;&gt;
+    +detect_ball(frame)
+    +track(points)
+    +launch(xy, fps, scale) Launch
+    +trajectory(launch) ndarray
+  }
+  class pipeline {
+    &lt;&lt;module&gt;&gt;
+    +lift_recording(folder)
+    +analyze_joints(t, joints, hitter) dict
+    +analyze_swing(lidar, slowmo, hitter) dict
+    +analyze_recording(lidar, slowmo, hitter) dict
+    +analyze_session(lidar, hitter)
+    +hitter_warnings(hitter) list
+    +save_result(rec, session)
+  }
+  class session {
+    &lt;&lt;module&gt;&gt;
+    +find_swings(t, joints) SwingWindow
+    +analyze_long(folder, hitter)
+    +summarize(records) dict
+  }
+  class inbox {
+    &lt;&lt;module&gt;&gt;
+    +scan(root) Pair
+    +process(root)
+  }
+  class coach_gemini {
+    &lt;&lt;module&gt;&gt;
+    +report(payload) SwingReport
+    +session_report(summary) SessionReport
+    +chat(payload, history, question) str
+    +video_read(video)
+    +validate_plan(report, payload)
+  }
+  class coach_payload {
+    &lt;&lt;module&gt;&gt;
+    +build(analysis, features, hitter) dict
+  }
+  class coach_exercises {
+    &lt;&lt;module&gt;&gt;
+    +LIBRARY
+    +weak_areas(contributions) list
+    +options_for(areas) list
+  }
+  obp --&gt; Swing
+  skeleton --&gt; Skeleton
+  Swing ..&gt; skeleton : from_obp
+  capture --&gt; Capture
+  pipeline ..&gt; capture
+  pipeline ..&gt; skeleton
+  pipeline ..&gt; kinematics
+  pipeline ..&gt; features
+  pipeline ..&gt; ballflight
+  ballflight --&gt; Launch
+  pipeline ..&gt; SwingModel
+  pipeline ..&gt; GroupScorer
+  session --&gt; SwingWindow
+  session ..&gt; pipeline
+  inbox --&gt; Pair
+  inbox ..&gt; pipeline
+  pipeline ..&gt; coach_payload
+  coach_payload ..&gt; coach_exercises
+  coach_exercises --&gt; Exercise
+  pipeline ..&gt; coach_gemini
+  coach_gemini --&gt; SwingReport
+  coach_gemini --&gt; SessionReport
+  SwingReport *-- Drill
+  SwingReport *-- TrainingItem
+  TrainingItem ..&gt; Exercise : exercise_id
+</pre></div></section>
+<section><h2>Sequence: one swing</h2><p>From both phones to the viewer for a single swing.</p><div class="dia"><pre class="mermaid">sequenceDiagram
+  actor Hitter
+  participant iPhone as iPhone (LiDAR app)
+  participant Slo as Phone 2 (240 fps)
+  participant Drive as Google Drive
+  participant Inbox as inbox.process
+  participant Pipe as pipeline
+  participant Cap as capture + MediaPipe
+  participant Ana as skeleton/kinematics/features
+  participant Mod as model + scoring
+  participant Ball as ballflight
+  participant Coach as coach (payload, Gemini)
+  participant Viewer
+  Hitter-&gt;&gt;iPhone: record swing (stance 1 s, swing, finish)
+  Hitter-&gt;&gt;Slo: record slow motion
+  iPhone-&gt;&gt;Drive: upload lidar/ folder
+  Slo-&gt;&gt;Drive: upload slowmo/ video
+  Drive--&gt;&gt;Inbox: synced to laptop
+  Inbox-&gt;&gt;Inbox: pair by log.csv or order
+  Inbox-&gt;&gt;Pipe: analyze_swing(lidar, slowmo, hitter)
+  Pipe-&gt;&gt;Cap: keypoints, depth lift, clean occlusions
+  Cap--&gt;&gt;Pipe: 3D joints (world frame)
+  Pipe-&gt;&gt;Ana: canonical skeleton at training fps, events, 23 features
+  Ana--&gt;&gt;Pipe: features
+  Pipe-&gt;&gt;Mod: predict + scores + focus (size-adjusted)
+  Mod--&gt;&gt;Pipe: analysis
+  Pipe-&gt;&gt;Ball: detect, track, contact, launch
+  Ball--&gt;&gt;Pipe: exit speed, launch angle
+  Pipe-&gt;&gt;Coach: payload (numbers, focus, exercise options)
+  Coach-&gt;&gt;Coach: Gemini report (or template fallback), validate exercises
+  Coach--&gt;&gt;Pipe: report + training plan
+  Pipe-&gt;&gt;Viewer: swings/&lt;session&gt;/&lt;id&gt;.json + index.json
+  Viewer--&gt;&gt;Hitter: 3D replay, scores, coach card, training plan
+</pre></div></section>
+<section><h2>Sequence: batting-cage session</h2><p>One long recording split into swings, one Gemini session report.</p><div class="dia"><pre class="mermaid">sequenceDiagram
+  participant Inbox as inbox.process
+  participant Pipe as pipeline
+  participant Sess as session
+  participant Coach as coach
+  participant Viewer
+  Inbox-&gt;&gt;Pipe: analyze_recording(lidar, slowmo, hitter)
+  Pipe-&gt;&gt;Pipe: lift once, find_swings: 2 or more swings
+  Pipe-&gt;&gt;Sess: analyze_long(lifted, windows)
+  loop each swing window
+    Sess-&gt;&gt;Pipe: analyze_joints(window)
+  end
+  Sess--&gt;&gt;Pipe: records + summarize (trends, consistency, best)
+  Pipe-&gt;&gt;Coach: template report per swing, ONE Gemini session report
+  Pipe-&gt;&gt;Viewer: each swing + _session.json + index.json
+  Viewer--&gt;&gt;Viewer: Session tab: per-swing chart, trend, report
+</pre></div></section>
+</div>
