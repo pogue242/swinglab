@@ -75,7 +75,7 @@ def build(analysis: dict, feats: dict, hitter: dict, measured: dict | None = Non
                   "effects are size-adjusted associations, not guarantees"],
         "not_graded": [n["label"] for n in analysis.get("not_graded", [])],
     }
-    areas = exercises.weak_areas(analysis["contributions"])
+    areas = exercises.weak_areas_elite(analysis.get("elite")) or exercises.weak_areas(analysis["contributions"])
     payload["training_areas"] = [exercises.AREAS[a] for a in areas]
     payload["exercise_options"] = exercises.options_for(areas)
     payload["training_disclaimer"] = exercises.DISCLAIMER

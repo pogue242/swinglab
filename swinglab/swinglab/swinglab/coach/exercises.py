@@ -24,6 +24,7 @@ AREAS = {
     "sequencing": "Hips-first timing (kinematic sequence)",
     "stability": "Balance and head/trunk stability",
     "lower_body_strength": "General lower-body strength",
+    "footwork": "Footwork: the step, the plant and the back-foot turn",
 }
 
 # Which areas each measured mechanic draws on (features.FEATURES keys).
@@ -38,10 +39,10 @@ FEATURE_AREAS = {
     "gain_torso_over_pelvis": ["trunk_rotation", "sequencing"],
     "seq_pelvis_to_torso_ms": ["sequencing"],
     "seq_torso_to_hands_ms": ["sequencing", "trunk_rotation"],
-    "fp_to_contact_ms": ["sequencing", "hip_power"],
-    "stride_length": ["lower_body_strength", "stability"],
+    "fp_to_contact_ms": ["footwork", "sequencing"],
+    "stride_length": ["footwork", "stability"],
     "stance_width": ["stability"],
-    "lead_knee_extension": ["lead_leg_block", "lower_body_strength"],
+    "lead_knee_extension": ["lead_leg_block", "footwork"],
     "lead_knee_flex_contact": ["lead_leg_block"],
     "lead_knee_flex_fp": ["lead_leg_block", "stability"],
     "trunk_forward_tilt_contact": ["stability", "thoracic_mobility"],
@@ -49,6 +50,11 @@ FEATURE_AREAS = {
     "head_drift_fp_contact": ["stability"],
     "hips_drift_fp_contact": ["stability", "lead_leg_block"],
     "hands_forward_contact": ["sequencing", "trunk_rotation"],
+    # elite-match factor measurements (features.FACTOR_FEATURES)
+    "torso_turn_total": ["trunk_rotation", "thoracic_mobility"],
+    "pelvis_turn_total": ["hip_mobility", "hip_power"],
+    "drive_speed": ["hip_power", "lower_body_strength", "footwork"],
+    "rear_foot_turn": ["footwork", "hip_power"],
 }
 
 
@@ -108,11 +114,39 @@ LIBRARY = [
              "2 × 8 swings", "Step the front foot back to the back foot, then stride and swing: builds momentum into the turn.", "bat, tee"),
     Exercise("overload_underload", "Overload/underload bat swings", ("trunk_rotation", "hip_power"), "drill",
              "3 sets of 5 swings per bat (heavy, light, game), only when fresh", "Alternate a slightly heavier and lighter bat with your game bat at full intent. Stop if your mechanics break down.", "heavier and lighter bats"),
+    Exercise("stride_and_stick", "Stride and stick", ("footwork", "lead_leg_block", "stability"), "drill",
+             "2 × 8", "Take your normal step, land on the inside of the front foot with the knee firm, and freeze for 2 seconds "
+             "before swinging: teaches a firm, on-time plant.", "bat"),
+    Exercise("back_heel_pivot", "Back-heel pivot (\"squash the bug\") swings", ("footwork", "hip_power"), "drill",
+             "2 × 10 slow, then 1 × 5 full", "Swing slowly and finish up on the ball of your back foot with the heel pointing "
+             "to the sky and the back knee driving toward the front knee.", "bat"),
 ]
 BY_ID = {e.id: e for e in LIBRARY}
 
 DISCLAIMER = ("General training information, not medical advice. Warm up first, use light loads to learn each "
               "movement, train with a coach if you're under 18, and stop if anything hurts.")
+
+
+def video_url(e: Exercise) -> str:
+    """A YouTube search for the exercise (so the link always works; individual videos are not vetted)."""
+    from urllib.parse import quote_plus
+    return "https://www.youtube.com/results?search_query=" + quote_plus(f"{e.name} baseball hitting exercise")
+
+
+def weak_areas_elite(elite: dict | None, top_n: int = 3) -> list[str]:
+    """Training areas behind the weakest elite-match factors (weight x shortfall, worst first)."""
+    if not elite:
+        return []
+    costs: dict[str, float] = {}
+    for f in elite.get("factors", []):
+        if f.get("percent") is None or f["percent"] >= 90 or not f.get("parts"):
+            continue
+        for p in f["parts"]:
+            if p.get("percent") is None:
+                continue
+            for k, area in enumerate(FEATURE_AREAS.get(p["feature"], [])):
+                costs[area] = costs.get(area, 0.0) + f.get("weight", 1.0) * (100 - p["percent"]) / (k + 1)
+    return [a for a, _ in sorted(costs.items(), key=lambda kv: -kv[1])][:top_n]
 
 
 def weak_areas(contributions: dict, top_n: int = 3) -> list[str]:
@@ -139,5 +173,6 @@ def options_for(areas: list[str], max_items: int = 8) -> list[dict]:
     for _, _, e in scored[:max_items]:
         d = asdict(e)
         d["areas"] = [AREAS[a] for a in e.areas]
+        d["video_url"] = video_url(e)
         out.append(d)
     return out

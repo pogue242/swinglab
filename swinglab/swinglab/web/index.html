@@ -363,6 +363,9 @@ dialog h2{font:700 24px var(--display);letter-spacing:.04em}
 .rgroup>summary::before{content:"\25B8";color:var(--muted);font-size:11px;margin-right:-2px}
 .rgroup[open]>summary::before{content:"\25BE"}
 .rgroup ol{list-style:none;margin:0;padding:0 0 6px 18px}
+.cplain{font-size:17px;line-height:1.5;color:var(--ink);margin:6px 0 10px}
+.cwatch{font-size:12px;font-weight:600;color:var(--red);text-decoration:none;white-space:nowrap}
+.cwatch:hover{text-decoration:underline}
 </style>
 </head>
 <body>
@@ -875,20 +878,22 @@ function renderCoach(){
   if(!r.headline){$("#coach").hidden=true;return}$("#coach").hidden=false;
   const opts=Object.fromEntries(((s.payload&&s.payload.exercise_options)||[]).map(o=>[o.id,o]));
   const plan=(r.training_plan||[]).map(x=>{const o=opts[x.exercise_id]||{name:x.exercise_id,how:"",kind:""};
-    return `<li><b>${esc(o.name)}</b> <span class="rx">· ${esc(x.prescription)}</span><br><small>${esc(x.why)} ${esc(o.how)}</small></li>`}).join("");
+    const watch=o.video_url?` <a class="cwatch" href="${esc(o.video_url)}" target="_blank" rel="noopener">▶ Watch how</a>`:"";
+    return `<li><b>${esc(o.name)}</b> <span class="rx">· ${esc(x.prescription)}</span>${watch}<br><small>${esc(x.why)} ${esc(o.how)}</small></li>`}).join("");
   const steps=(r.drill&&r.drill.steps)||[];
   $("#coach").innerHTML=`<div class="eyebrow">Coach<span class="src" title="${esc(why||"")}">${src==="gemini"?((s.report_source||{}).video?"written by Gemini from the video and the measurements":"written by Gemini from the measurements"):"template report"}</span></div>
     <h2 class="chead" id="coachHead">${esc(r.headline)}</h2>
+    ${r.plain_summary?`<p class="cplain">${esc(r.plain_summary)}</p>`:""}
     ${r.coach_view?`<p class="cview"><b>What the coach sees:</b> ${esc(r.coach_view)}</p>`:""}
     ${r.cue?`<p class="cue">“${esc(String(r.cue).replace(/^["“]|["”]$/g,""))}”</p>`:""}
     ${r.drill&&r.drill.name?`<p class="drill"><b>Drill:</b> ${esc(r.drill.name)}${steps.length?` <span>· ${steps.length} steps</span>`:""}</p>`:""}
     <details class="creport"><summary><span class="morel">Show full report</span><span class="lessl">Hide full report</span></summary>
       <div class="cgrid"><div>
-        ${r.what_happened?`<h3>What happened</h3><p>${esc(r.what_happened)}</p>`:""}
+        ${r.what_happened?`<h3>In detail (the numbers)</h3><p>${esc(r.what_happened)}</p>`:""}
         ${r.why_it_matters?`<h3>Why it matters</h3><p>${esc(r.why_it_matters)}</p>`:""}
         ${steps.length?`<h3>Drill · ${esc(r.drill.name)}</h3><ol>${steps.map(x=>`<li>${esc(x)}</li>`).join("")}</ol>`:""}
       </div><div>
-        ${plan?`<h3>Training plan</h3>${r.training_focus?`<p>${esc(r.training_focus)}</p>`:""}<ul>${plan}</ul><p class="fine">${esc((s.payload&&s.payload.training_disclaimer)||"")}</p>`:""}
+        ${plan?`<h3>Workouts, stretches and drills</h3>${r.training_focus?`<p>${esc(r.training_focus)}</p>`:""}<ul>${plan}</ul><p class="fine">${esc((s.payload&&s.payload.training_disclaimer)||"")}</p>`:""}
       </div></div></details>`;
 }
 
