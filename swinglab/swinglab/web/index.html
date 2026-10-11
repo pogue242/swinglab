@@ -324,6 +324,48 @@ dialog h2{font:700 24px var(--display);letter-spacing:.04em}
 .toast{position:fixed;right:18px;bottom:18px;z-index:60;background:var(--ink);color:#fff;padding:10px 14px;border-radius:10px;font-size:14px;box-shadow:0 6px 24px rgb(0 0 0 / .25);opacity:0;transform:translateY(8px);transition:.25s;pointer-events:none}
 .toast.show{opacity:1;transform:none}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+/* ---- elite match panel (FUNC, 2026-10-11): factors under the score, (i) explains each ---- */
+.em{margin:14px 0 0;border-top:1px solid var(--line);padding-top:12px}
+.em-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.em-head b{font:600 22px/1 var(--display)}
+.em-head .fine{flex:1 1 auto}
+.em-i{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:50%;border:1px solid var(--steel);
+  color:var(--steel);font:600 11px/1 var(--body);cursor:pointer;flex:none;background:var(--panel);padding:0}
+.em-i:hover,.em-i[aria-expanded="true"]{background:var(--steel);color:#fff}
+.em-exp{font-size:13px;color:var(--ink);background:var(--soft);border-radius:8px;padding:8px 10px;margin:6px 0 2px}
+.em-exp p{margin:0 0 6px}.em-exp p:last-child{margin:0}
+.em-exp table{border-collapse:collapse;width:100%;font-size:12px;margin-top:4px}
+.em-exp td,.em-exp th{padding:2px 4px;text-align:left;border-bottom:1px solid var(--line)}
+.em-exp th{color:var(--muted);font-weight:500}
+.em-rows{list-style:none;margin:8px 0 0;padding:0}
+.em-row{margin:0 0 6px}
+.em-line{display:grid;grid-template-columns:minmax(0,1fr) 92px 38px 16px;align-items:center;gap:8px;font-size:13px}
+.em-line .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.em-line .lbl small{color:var(--muted);margin-left:4px}
+.em-bar{height:8px;border-radius:4px;background:var(--line);position:relative;overflow:hidden}
+.em-bar i{position:absolute;top:0;bottom:0;left:0;border-radius:4px}
+.em-bar .v-elite{background:var(--good)}.em-bar .v-close{background:var(--steel)}.em-bar .v-work{background:var(--bad)}
+.em-pct{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.em-note{font-size:11px;color:var(--warn);margin-left:2px}
+.cview{margin:6px 0 10px;font-size:14px;color:var(--ink);border-left:3px solid var(--steel);padding-left:10px}
+.cview b{color:var(--steel);font-weight:600}
+/* ---- swing rail: List / By video (FUNC, 2026-10-11) ---- */
+.rmode{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-left:auto;margin-right:8px}
+.rmode button{border:0;background:#fff;font:500 11px var(--body);color:var(--muted);padding:3px 8px;cursor:pointer}
+.rmode button[aria-pressed="true"]{background:var(--navy);color:#fff}
+.rgroup{border-bottom:1px solid var(--line)}
+.rgroup>summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 16px;font-size:13px}
+.rgroup>summary::-webkit-details-marker{display:none}
+.rgroup>summary .gt{display:flex;flex-direction:column;min-width:0}
+.rgroup>summary .gt b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rgroup>summary .gn{font:600 20px/1 var(--display);font-variant-numeric:tabular-nums}
+.rgroup>summary .gn small{display:block;font:11px var(--body);color:var(--muted);text-align:right}
+.rgroup>summary::before{content:"\25B8";color:var(--muted);font-size:11px;margin-right:-2px}
+.rgroup[open]>summary::before{content:"\25BE"}
+.rgroup ol{list-style:none;margin:0;padding:0 0 6px 18px}
+.cplain{font-size:17px;line-height:1.5;color:var(--ink);margin:6px 0 10px}
+.cwatch{font-size:12px;font-weight:600;color:var(--red);text-decoration:none;white-space:nowrap}
+.cwatch:hover{text-decoration:underline}
 </style>
 </head>
 <body>
@@ -352,7 +394,7 @@ dialog h2{font:700 24px var(--display);letter-spacing:.04em}
 
 <div id="view-hitter" class="hlayout" hidden>
   <aside class="rail" id="rail" aria-label="Swings" hidden>
-    <div class="railhead"><h2>Swings</h2><span id="swingCount"></span></div>
+    <div class="railhead"><h2>Swings</h2><span class="rmode" role="group" aria-label="Show swings as"><button type="button" data-m="list" aria-pressed="true">List</button><button type="button" data-m="video" aria-pressed="false">By video</button></span><span id="swingCount"></span></div>
     <ol class="raillist" id="railList"></ol>
   </aside>
 
@@ -401,6 +443,7 @@ dialog h2{font:700 24px var(--display);letter-spacing:.04em}
             </dl>
           </div>
           <p class="statnote" id="stNote"></p>
+          <div class="em" id="elitePanel" hidden></div>
           <div class="seq">
             <div class="seqhead"><h2>Kinematic sequence</h2>
               <div class="clegend"><span><i style="background:var(--pelvis)"></i>Hips</span><span><i style="background:var(--torso)"></i>Chest</span><span><i style="background:repeating-linear-gradient(90deg,var(--hands) 0 4px,transparent 4px 6px)"></i>Hands</span></div></div>
@@ -601,13 +644,29 @@ const MODE_LABEL={hit:"hit",miss:"miss",dry:"dry swing",lab:"lab"};
 const num=v=>v==null||!isFinite(v)?"–":Math.round(v);
 function swingTitle(i){const s=SWINGS[i],w=when(s.recorded_at),p=partOf(i);
   return w?{d:w.date,t:w.time,full:`${w.date}, ${w.year} · ${w.time}`,part:p}:{d:"Lab swing",t:String(s.id||"").slice(-14),full:`Lab swing ${s.id||""}`,part:null}}
+let RAILMODE=(()=>{try{return localStorage.getItem("railMode")||"list"}catch(e){return "list"}})();
+document.querySelectorAll(".rmode button").forEach(b=>b.onclick=()=>{RAILMODE=b.dataset.m;try{localStorage.setItem("railMode",RAILMODE)}catch(e){}renderRail()});
+function railBtn(i,inGroup){const s=SWINGS[i],T=swingTitle(i),sc=s.scores||{};
+  const what=inGroup&&T.part?`Swing ${T.part.k} of ${T.part.n}`:esc(T.d)+(T.part?` <span class="fine">· ${T.part.k}/${T.part.n}</span>`:"");
+  return `<li><button class="rbtn" data-i="${i}" aria-current="${i===SI}" aria-label="Swing ${esc(T.full)}, ${esc(MODE_LABEL[s.mode]||s.mode)}, overall ${num(sc.overall)}">
+      <span><span class="d">${what}</span><span class="t">${esc(T.t)} · <span class="mtxt ${esc(s.mode)}">${esc(s.mode==="dry"?"dry":MODE_LABEL[s.mode]||s.mode)}</span></span></span>
+      <span class="n">${num(sc.overall)}</span></button></li>`}
+// "By video": swings grouped by the recording they were cut from (ids <recording>-01, -02…), newest first
+function railGroups(){const g=new Map();SWINGS.forEach((s,i)=>{const k=recOf(s)||String(s.id||i);if(!g.has(k))g.set(k,[]);g.get(k).push(i)});
+  return [...g.entries()].map(([k,ix])=>({k,ix,name:(ix.length>1?k:String(SWINGS[ix[0]].id||k)).replace(/^.*?__/,""),last:Math.max(...ix)})).sort((a,b)=>b.last-a.last)}
 function renderRail(){
   $("#swingCount").textContent=SWINGS.length||"";
-  const order=SWINGS.map((_,i)=>i).reverse();
-  $("#railList").innerHTML=order.map(i=>{const s=SWINGS[i],T=swingTitle(i),sc=s.scores||{};
-    return `<li><button class="rbtn" data-i="${i}" aria-current="${i===SI}" aria-label="Swing ${esc(T.full)}, ${esc(MODE_LABEL[s.mode]||s.mode)}, overall ${num(sc.overall)}">
-      <span><span class="d">${esc(T.d)}${T.part?` <span class="fine">· ${T.part.k}/${T.part.n}</span>`:""}</span><span class="t">${esc(T.t)} · <span class="mtxt ${esc(s.mode)}">${esc(s.mode==="dry"?"dry":MODE_LABEL[s.mode]||s.mode)}</span></span></span>
-      <span class="n">${num(sc.overall)}</span></button></li>`}).join("");
+  document.querySelectorAll(".rmode button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.m===RAILMODE)));
+  if(RAILMODE==="video"){
+    $("#railList").innerHTML=railGroups().map(G=>{const sc=G.ix.map(i=>(SWINGS[i].scores||{}).overall).filter(v=>v!=null),w=when(SWINGS[G.ix[0]].recorded_at);
+      const avg=sc.length?sc.reduce((a,b)=>a+b,0)/sc.length:null,open=G.ix.includes(SI);
+      return `<li><details class="rgroup"${open?" open":""}><summary><span class="gt"><b title="${esc(G.name)}">${esc(G.name)}</b>
+        <span class="fine">${w?esc(w.date+" · "+w.time)+" · ":""}${G.ix.length} swing${G.ix.length>1?"s":""}</span></span>
+        <span class="gn">${num(avg)}<small>${G.ix.length>1?"average":"overall"}</small></span></summary>
+        <ol>${G.ix.map(i=>railBtn(i,true)).join("")}</ol></details></li>`}).join("");
+  }else{
+    $("#railList").innerHTML=SWINGS.map((_,i)=>i).reverse().map(i=>railBtn(i,false)).join("");
+  }
   $("#railList").querySelectorAll(".rbtn").forEach(b=>b.onclick=()=>selectSwing(+b.dataset.i));
 }
 async function selectSwing(i){
@@ -682,7 +741,7 @@ function showSwing(){
   ["load","foot_plant","contact"].forEach(k=>{if(s.events[k]==null)return;const pos=100*idxAt(s,s.events[k])/(s.time.length-1);const b=document.createElement("button");
     b.style.left=pos+"%";b.textContent=PHASE_LABEL[k];b.title=`Jump to ${PHASE_LABEL[k].toLowerCase()}`;b.className=(k==="contact"?"contact ":"")+(pos-lastPos<14?"low":"");if(pos-lastPos>=14)lastPos=pos;
     b.onclick=()=>{ov.pause();t=REC.events[k];playing=false;playUI("play");draw()};ticks.append(b)});
-  renderHeader();renderStats();renderCoach();renderChart();renderPhases();renderMeas();setOverlay(s);resetChat();resize();draw();
+  renderHeader();renderStats();renderElite();renderCoach();renderChart();renderPhases();renderMeas();setOverlay(s);resetChat();resize();draw();
 }
 function phaseAt(s,tt){const e=s.events;if(e.contact==null)return"";if(tt>=e.contact-0.5/s.fps)return tt>e.contact+0.15?"Finish":"Contact";if(tt>=e.foot_plant)return"Foot plant → contact";if(tt>=e.load)return"Load → stride";return"Stance"}
 function draw(push=true){
@@ -765,25 +824,76 @@ function renderStats(){
   $("#stNote").innerHTML=lines.map(x=>`<span>${esc(x)}</span>`).join("");
 }
 
+/* ---------- elite match panel: every factor under the score, (i) explains how it is calculated ---------- */
+const EM_RULE={ratio:"your value ÷ the elite median (hand speed: elite hitters of your height and weight), capped at 100%",
+  higher:"100% at or above where elite hitters start (their 25th percentile), sliding down to 0% well below the lab range",
+  lower:"100% at or below where elite hitters stop (their 75th percentile), sliding down to 0% well above the lab range",
+  range:"100% inside the elite range (their 10th–90th percentile), sliding down to 0% well outside it",
+  heel_turn:"coaching rule (the lab has no foot markers): 30° or more = 100%, 10° or less = 0%"};
+function emNum(v,u){if(v==null)return "–";v=+v;
+  if(u==="deg")return Math.round(v)+"°";if(u==="ms")return Math.round(v)+" ms";
+  if(u==="m/s")return v.toFixed(1)+" m/s";if(u==="heights/s")return v.toFixed(2)+" heights/s";
+  if(u==="ratio")return Math.round(v*100)+"% of height";return String(Math.round(v*100)/100)}
+function emCmp(p){if(p.target)return p.target;if(p.elite_band)return `${emNum(p.elite_band[0],p.unit)} to ${emNum(p.elite_band[1],p.unit)}`;
+  if(p.elite_from!=null)return `${emNum(p.elite_from,p.unit)} or more`;if(p.elite_up_to!=null)return `${emNum(p.elite_up_to,p.unit)} or less`;
+  return p.elite_median!=null?`median ${emNum(p.elite_median,p.unit)}`:"–"}
+function emToggle(btn){const box=btn.closest(".em-row,.em-top").querySelector(".em-exp");const open=box.hidden;box.hidden=!open;btn.setAttribute("aria-expanded",String(open))}
+function renderElite(){
+  const el=((REC||{}).analysis||{}).elite,box=$("#elitePanel");
+  if(!el||!Array.isArray(el.factors)){box.hidden=true;box.innerHTML="";return}box.hidden=false;
+  const fs=el.factors.filter(f=>f.key!=="explosiveness");
+  const wsum=fs.filter(f=>f.percent!=null).reduce((a,f)=>a+(f.weight||1),0);
+  const vcls=v=>v==="elite"?"v-elite":v==="close"?"v-close":"v-work";
+  const rows=fs.map(f=>{const parts=f.parts||[];
+    const tbl=parts.length?`<table><tr><th>Measurement</th><th>You</th><th>Elite</th><th>%</th></tr>${parts.map(p=>`<tr><td>${esc(p.label)}</td><td>${p.skipped?"–":esc(emNum(p.value,p.unit))}</td><td>${esc(emCmp(p))}</td><td>${p.skipped?"skipped":p.percent==null?"–":p.percent+"%"}</td></tr>`).join("")}</table>`:"";
+    const rules=[...new Set(parts.map(p=>p.rule))].map(r=>EM_RULE[r]).filter(Boolean);
+    const skipped=parts.filter(p=>p.skipped).map(p=>p.skipped);
+    return `<li class="em-row"><div class="em-line"><span class="lbl">${esc(f.label)}<small>×${f.weight??1}</small>${f.note?`<span class="em-note" title="${esc(f.note)}">*</span>`:""}</span>
+      <span class="em-bar"><i class="${vcls(f.verdict)}" style="width:${f.percent??0}%"></i></span>
+      <span class="em-pct">${f.percent==null?"–":f.percent+"%"}</span>
+      <button type="button" class="em-i" aria-expanded="false" aria-label="How ${esc(f.label)} is calculated">i</button></div>
+      <div class="em-exp" hidden><p>${esc(f.help||"")}</p>
+        <p><b>Score:</b> ${f.percent==null?"not judged on this swing":`${f.percent}% of elite (${esc(f.verdict)})`}: the average of the measurements below.
+        It counts <b>×${f.weight??1}</b> in the elite match.</p>
+        ${rules.length?`<p><b>How each measurement is scored:</b> ${rules.map(esc).join("; ")}.</p>`:""}
+        ${f.note?`<p><b>Camera note:</b> ${esc(f.note)}.</p>`:""}${skipped.length?`<p><b>Skipped:</b> ${esc(skipped[0])}.</p>`:""}${tbl}</div></li>`}).join("");
+  const ref=el.elite_reference||{};
+  box.innerHTML=`<div class="em-top"><div class="em-head"><span class="eyebrow">Elite match</span><b>${el.match==null?"–":el.match+"%"}</b>
+      <span class="fine">${el.at_elite} of ${el.n_judged} factors at elite level</span>
+      <button type="button" class="em-i" aria-expanded="false" aria-label="How the elite match is calculated">i</button></div>
+    <div class="em-exp" hidden><p><b>Elite</b> = the top third of ${ref.n_swings||677} Driveline lab swings by bat speed for the hitter's size
+      (${ref.n_elite_swings||226} swings from ${ref.n_elite_hitters||58} hitters).</p>
+      <p>Each factor below is scored as a <b>% of elite</b>. The elite match is their <b>weighted average</b>
+      (weights shown as ×; ${wsum} in total on this swing), so legs and rotation count most.</p>
+      <p>A factor at <b>90% or more</b> is “at elite level” (green); 70–89% is close (blue); under 70% is something to work on (red).
+      For a dry swing the elite match is the Overall and Form score; for a hit, Overall also averages in ball contact.</p>
+      <p class="fine">* reads lower than true from a camera in front of the hitter. The AI coach does not score; it guides the coaching.</p></div></div>
+    <ul class="em-rows">${rows}</ul>`;
+  box.querySelectorAll(".em-i").forEach(b=>b.onclick=()=>emToggle(b));
+}
+
 /* ---------- coach card ---------- */
 function renderCoach(){
   const s=REC,r=s.report||{},src=(s.report_source||{}).source,why=(s.report_source||{}).reason;
   if(!r.headline){$("#coach").hidden=true;return}$("#coach").hidden=false;
   const opts=Object.fromEntries(((s.payload&&s.payload.exercise_options)||[]).map(o=>[o.id,o]));
   const plan=(r.training_plan||[]).map(x=>{const o=opts[x.exercise_id]||{name:x.exercise_id,how:"",kind:""};
-    return `<li><b>${esc(o.name)}</b> <span class="rx">· ${esc(x.prescription)}</span><br><small>${esc(x.why)} ${esc(o.how)}</small></li>`}).join("");
+    const watch=o.video_url?` <a class="cwatch" href="${esc(o.video_url)}" target="_blank" rel="noopener">▶ Watch how</a>`:"";
+    return `<li><b>${esc(o.name)}</b> <span class="rx">· ${esc(x.prescription)}</span>${watch}<br><small>${esc(x.why)} ${esc(o.how)}</small></li>`}).join("");
   const steps=(r.drill&&r.drill.steps)||[];
-  $("#coach").innerHTML=`<div class="eyebrow">Coach<span class="src" title="${esc(why||"")}">${src==="gemini"?"written by Gemini from the measurements":"template report"}</span></div>
+  $("#coach").innerHTML=`<div class="eyebrow">Coach<span class="src" title="${esc(why||"")}">${src==="gemini"?((s.report_source||{}).video?"written by Gemini from the video and the measurements":"written by Gemini from the measurements"):"template report"}</span></div>
     <h2 class="chead" id="coachHead">${esc(r.headline)}</h2>
+    ${r.plain_summary?`<p class="cplain">${esc(r.plain_summary)}</p>`:""}
+    ${r.coach_view?`<p class="cview"><b>What the coach sees:</b> ${esc(r.coach_view)}</p>`:""}
     ${r.cue?`<p class="cue">“${esc(String(r.cue).replace(/^["“]|["”]$/g,""))}”</p>`:""}
     ${r.drill&&r.drill.name?`<p class="drill"><b>Drill:</b> ${esc(r.drill.name)}${steps.length?` <span>· ${steps.length} steps</span>`:""}</p>`:""}
     <details class="creport"><summary><span class="morel">Show full report</span><span class="lessl">Hide full report</span></summary>
       <div class="cgrid"><div>
-        ${r.what_happened?`<h3>What happened</h3><p>${esc(r.what_happened)}</p>`:""}
+        ${r.what_happened?`<h3>In detail (the numbers)</h3><p>${esc(r.what_happened)}</p>`:""}
         ${r.why_it_matters?`<h3>Why it matters</h3><p>${esc(r.why_it_matters)}</p>`:""}
         ${steps.length?`<h3>Drill · ${esc(r.drill.name)}</h3><ol>${steps.map(x=>`<li>${esc(x)}</li>`).join("")}</ol>`:""}
       </div><div>
-        ${plan?`<h3>Training plan</h3>${r.training_focus?`<p>${esc(r.training_focus)}</p>`:""}<ul>${plan}</ul><p class="fine">${esc((s.payload&&s.payload.training_disclaimer)||"")}</p>`:""}
+        ${plan?`<h3>Workouts, stretches and drills</h3>${r.training_focus?`<p>${esc(r.training_focus)}</p>`:""}<ul>${plan}</ul><p class="fine">${esc((s.payload&&s.payload.training_disclaimer)||"")}</p>`:""}
       </div></div></details>`;
 }
 

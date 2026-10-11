@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from .. import features
-from . import exercises
+from . import exercises, plain
 
 FOCUS_ANCHOR = {
     # feature -> (joint to highlight, phase to jump to)
@@ -33,6 +33,7 @@ def elite_block(el: dict | None) -> dict | None:
     return {"match_percent": el["match"], "at_elite": el["at_elite"], "factors_judged": el["n_judged"],
             "standard": el.get("standard"),
             "factors": [{"factor": f["label"], "percent_of_elite": f["percent"], "verdict": f["verdict"],
+                         "weight": f.get("weight", 1.0),
                          **({"note": f["note"]} if f.get("note") else {}),
                          "measurements": [{"name": p["label"], **{k: p[k] for k in keep if p.get(k) is not None}}
                                           for p in f["parts"]]} for f in el["factors"]]}
@@ -53,6 +54,7 @@ def build(analysis: dict, feats: dict, hitter: dict, measured: dict | None = Non
                        "lab": "lab swing at a pitched ball (Driveline motion capture)"}.get(
             mode, "dry swing (no ball): rate form only; do not mention ball contact, exit speed or launch"),
         "elite_match": elite_block(analysis.get("elite")),
+        "plain_language": {"faults": plain.faults(analysis.get("elite")), "strengths": plain.strengths(analysis.get("elite"))},
         "scores_0_100": {k: v for k, v in analysis["scores"].items() if v is not None},
         "score_meaning": {"form": "the elite match: mean of the factors' percent of elite (see elite_match)",
                           "power / transfer / posture": "older lab-range group grades, secondary",
@@ -73,7 +75,7 @@ def build(analysis: dict, feats: dict, hitter: dict, measured: dict | None = Non
                   "effects are size-adjusted associations, not guarantees"],
         "not_graded": [n["label"] for n in analysis.get("not_graded", [])],
     }
-    areas = exercises.weak_areas(analysis["contributions"])
+    areas = exercises.weak_areas_elite(analysis.get("elite")) or exercises.weak_areas(analysis["contributions"])
     payload["training_areas"] = [exercises.AREAS[a] for a in areas]
     payload["exercise_options"] = exercises.options_for(areas)
     payload["training_disclaimer"] = exercises.DISCLAIMER

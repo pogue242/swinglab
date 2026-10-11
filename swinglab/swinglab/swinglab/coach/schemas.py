@@ -25,6 +25,7 @@ class TrainingItem(BaseModel):
 
 class SwingReport(BaseModel):
     headline: str = Field(description="One short sentence naming the main issue or strength")
+    plain_summary: str = Field(default="", description="Opening paragraph, 3-4 short sentences, NO numbers or jargon: what the body did, for a beginner")
     what_happened: str = Field(description="2-3 sentences, citing only numbers present in the payload")
     why_it_matters: str = Field(description="1-2 sentences linking the issue to bat speed or contact")
     cue: str = Field(description="One coaching cue the hitter can think about during the next swing")
@@ -36,6 +37,8 @@ class SwingReport(BaseModel):
     training_focus: str = Field(default="", description="One sentence: what the training plan targets and why")
     training_plan: list[TrainingItem] = Field(default_factory=list, max_length=5,
                                               description="3-4 exercises chosen ONLY from exercise_options")
+    coach_view: str = Field(default="", description="Your own read of the video along the kinetic chain, in 2-3 sentences, "
+                                                     "before leaning on the numbers (empty without a video)")
     video_notes: list[str] = Field(default_factory=list, max_length=4,
                                    description="What the video shows about the focus factor that the numbers don't (empty without a video)")
     disagreements: list[str] = Field(default_factory=list, max_length=3,

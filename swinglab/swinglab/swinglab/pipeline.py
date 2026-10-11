@@ -611,34 +611,25 @@ def swing_clip(rec: dict, out_base: Path, *, height: int = 720) -> Path | None:
 
 
 def _coach(rec: dict, hitter: dict, measured: dict | None, use_gemini: bool, *, template_reason: str = "disabled") -> None:
-    """Payload + report (Gemini or template) for an analyzed swing record. With Gemini and a video: the swing
-    clip is uploaded once; the AI coach first rates it blind (Explosiveness factor, before any numbers, so it
-    doesn't anchor on them), then writes the report from the numbers AND the video."""
+    """Payload + report (Gemini or template) for an analyzed swing record. With Gemini and a video, the swing clip
+    is uploaded and the AI coach watches it with the numbers: it writes its own view of the video first
+    (report.coach_view), then the coaching. The AI does not score the swing (team decision 2026-10-11)."""
     import tempfile
-    from . import scoring
     from .coach import cues, gemini, payload
     client = gemini._client() if use_gemini else None
-    fh, blind, tmp = None, None, None
+    fh, tmp = None, None
     if client is not None and rec.get("video"):
         try:
             tmp = tempfile.TemporaryDirectory(prefix="swinglab_clip_")
             clip = swing_clip(rec, Path(tmp.name) / "swing")
             fh = gemini.upload_video(client, clip) if clip else None
+            rec.setdefault("stages", {})["coach_video"] = {"ok": fh is not None}
         except Exception as e:
             rec.setdefault("stages", {})["coach_video"] = {"ok": False, "error": f"{type(e).__name__}: {e}"[:300]}
     try:
-        if fh is not None:
-            blind, binfo = gemini.blind_rating(fh, client=client)
-            rec.setdefault("stages", {})["coach_video"] = {"ok": blind is not None,
-                                                           **{k: v for k, v in binfo.items() if k in ("model", "reason", "seconds")}}
-            if blind is not None:
-                rec["blind_look"] = blind.model_dump()
-                scoring.with_ai_rating(rec["analysis"], blind.rating, blind.standout, binfo)
         pl = payload.build(rec["analysis"], rec["features"], {"name": hitter.get("name", ""), "bats": hitter["bats"],
                                                               "height_m": float(hitter["height_m"]),
                                                               "level": hitter.get("level", "college")}, measured=measured)
-        if blind is not None:
-            pl["blind_look"] = {k: v for k, v in blind.model_dump().items() if k != "rating"}
         rep, info = (gemini.report(pl, client=client, video=fh) if client is not None
                      else (cues.report(pl), {"source": "template", "reason": template_reason if not use_gemini else "no GEMINI_API_KEY"}))
     finally:

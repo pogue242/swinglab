@@ -15,9 +15,11 @@ Each FACTOR is a few measurements; each measurement gets a percent of elite by i
   heel_turn  coaching rule (the lab has no foot markers): back foot turned >= 30° just after contact = 100,
              10° = 0, linear between
 A factor's percent = the mean of its measurements' percents. The headline ELITE MATCH = the WEIGHTED mean over
-the factors that could be judged (weights below: the kinetic-chain factors the team ranks first, rotation, legs
-and step-through, and those the lab ties to bat speed most, count 1.5; the AI's Explosiveness 2, as the one
-judge of athleticism a front camera can't measure; contact point and stretch 1); "at elite level" = factors at
+the factors that could be judged. Weights (set with the team 2026-10-11): Leg drive 2.5; Shoulder turn and
+Hip turn 2 (the upper-body twist the team ranks first); Hand speed, Front-leg block, Step-through 1.5; Contact
+point and Stretch & stay closed 0.5 (in the lab they separate elite hitters least). The AI coach does NOT score:
+it reads the video and the numbers and guides the coaching (not part of the headline).
+"at elite level" = factors at
 90% or more. Verdicts: >= 90 elite, >= 70 close,
 else work on. One factor, Explosiveness, is rated by the AI coach from the video (with_ai) and labeled so.
 
@@ -51,13 +53,13 @@ FACTORS = [
      "help": "How fast your hands move: the result of everything else, and the closest thing to bat speed we can "
              "measure from one camera.",
      "parts": [("hand_speed_peak", "ratio")]},
-    {"key": "shoulder_turn", "weight": 1.5, "label": "Shoulder turn",
+    {"key": "shoulder_turn", "weight": 2.0, "label": "Shoulder turn",
      "help": "How far your shoulders rotate from the coil to the finish.",
      "parts": [("torso_turn_total", "ratio")], "note": "shoulder turn " + FRONT_CAMERA + " (about 80%)"},
-    {"key": "hip_turn", "weight": 1.5, "label": "Hip turn",
+    {"key": "hip_turn", "weight": 2.0, "label": "Hip turn",
      "help": "How far your hips rotate from the coil to the finish: the hips start the turn.",
      "parts": [("pelvis_turn_total", "ratio")], "note": "hip turn " + FRONT_CAMERA + " (about 60%)"},
-    {"key": "leg_drive", "weight": 1.5, "label": "Leg drive",
+    {"key": "leg_drive", "weight": 2.5, "label": "Leg drive",
      "help": "The back side drives: your legs push your body toward the pitcher during the stride, and the back heel "
              "turns up and out as the back hip drives through.",
      "parts": [("drive_speed", "ratio"), ("rear_foot_turn", "heel_turn")]},
@@ -65,10 +67,10 @@ FACTORS = [
      "help": "The front side brakes: the front leg lands and firms up (straightens) into contact, stopping the "
              "forward move so it turns into rotation.",
      "parts": [("lead_knee_extension", "higher"), ("lead_knee_flex_contact", "lower")]},
-    {"key": "contact_point", "weight": 1.0, "label": "Contact point",
+    {"key": "contact_point", "weight": 0.5, "label": "Contact point",
      "help": "Your hands are out in front of your body when the bat reaches the ball.",
      "parts": [("hands_forward_contact", "higher")]},
-    {"key": "stretch", "weight": 1.0, "label": "Stretch & stay closed",
+    {"key": "stretch", "weight": 0.5, "label": "Stretch & stay closed",
      "help": "Your hips turn ahead of your shoulders (the stretch across your core) while your shoulders stay closed "
              "until the front foot lands.",
      "parts": [("separation_max", "higher"), ("torso_yaw_fp", "lower")]},
@@ -78,7 +80,8 @@ FACTORS = [
      "parts": [("stride_length", "range"), ("fp_to_contact_ms", "range"), ("hips_drift_fp_contact", "range"),
                ("head_drift_fp_contact", "range")]},
 ]
-AI_FACTOR = {"key": "explosiveness", "weight": 2.0, "label": "Explosiveness (AI coach's eye)",
+# AI_FACTOR: kept so older records still read; no longer added to the score (2026-10-11)
+AI_FACTOR = {"key": "explosiveness", "weight": 0.0, "label": "Explosiveness (AI coach's eye)",
              "help": "An overall rating of how athletic and explosive the swing looks, by the AI coach from the video "
                      "alone (before it sees any numbers). Rated, not measured.",
              "note": "rated by the AI from the video, not measured"}
@@ -155,7 +158,7 @@ def part_percent(f: str, v: float, rule: str, ref: dict, height_m=None, mass_kg=
         return None, {}
     if rule == "heel_turn":
         return float(np.clip((v - HEEL_ZERO) / (HEEL_FULL - HEEL_ZERO), 0, 1) * 100), {
-            "target": f">= {HEEL_FULL:g}°", "rule": "coaching rule (the lab has no foot markers)"}
+            "target": f">= {HEEL_FULL:g}°", "basis": "coaching rule (the lab has no foot markers)"}
     m = ref["measurements"].get(f)
     if m is None:
         return None, {}

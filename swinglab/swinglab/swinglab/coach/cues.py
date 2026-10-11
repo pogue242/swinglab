@@ -85,7 +85,7 @@ def report(payload: dict) -> SwingReport:
             plan.append(TrainingItem(exercise_id=o["id"], prescription=o["prescription"],
                                      why=f"Builds {o['areas'][0].lower()}."))
     areas = payload.get("training_areas", [])
-    return SwingReport(headline=headline, what_happened=what, why_it_matters=why, cue=cue, drill=drill,
+    return SwingReport(plain_summary=_plain(payload), headline=headline, what_happened=what, why_it_matters=why, cue=cue, drill=drill,
                        focus_joint=f.get("anchor_joint", "neck"), focus_phase=f.get("anchor_phase", "contact"),
                        diagram=diagram, caption=f"{f.get('label', 'Your scores')} — you vs. typical lab hitter",
                        training_focus=("Targets: " + ", ".join(a.lower() for a in areas) + ".") if areas else "",
@@ -111,3 +111,15 @@ def session_report(summary: dict) -> SessionReport:
         best_swing_id=str(summary.get("best_swing", "")),
         next_session_focus=(f"Work on {rec['label'].lower()}." if rec else "Keep repeating your best swing."),
         fatigue_note=("Bat speed dropped late in the session; take more rest between swings." if d <= -1.0 else ""))
+
+
+def _plain(payload: dict) -> str:
+    """Opening paragraph from payload["plain_language"] (coach/plain.py phrases): no numbers, no jargon."""
+    pl = payload.get("plain_language") or {}
+    fs, ss = pl.get("faults") or [], pl.get("strengths") or []
+    out = [f"Good things first: {' and '.join(ss)}."] if ss else []
+    if fs:
+        out.append(f"The biggest thing holding you back: {fs[0]['phrase']}.")
+        if len(fs) > 1:
+            out.append(f"Also, {fs[1]['phrase']}.")
+    return " ".join(out)
