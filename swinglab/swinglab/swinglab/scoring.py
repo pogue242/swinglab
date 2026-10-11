@@ -231,13 +231,13 @@ def analyze(row: dict, models: dict, scorers: dict, covariates: dict, ranges: di
     return res
 
 
-def elite_focus(res: dict) -> dict | None:
+def elite_focus(res: dict, skip: tuple = ()) -> dict | None:
     """The focus = the lowest measured factor below elite level and its weakest measurement (elite.weakest),
     in the shape the coach and viewer already read (feature, label, value, typical, unit, effect_mph), plus
     factor / factor_label / percent. effect_mph comes from the lab model when the measurement is one of its
     inputs, else None."""
     from . import elite
-    w = elite.weakest(res["elite"])
+    w = elite.weakest(res["elite"], skip=skip)
     if not w:
         return None
     fc, part = w

@@ -6,13 +6,19 @@ height, weight, age and level predict), so "elite" means hitters who get the mos
 Each FACTOR is a few measurements; each measurement gets a percent of elite by its rule:
   ratio      value / elite median, capped at 100 (speeds and turn amounts, where 0 means "none");
              hand speed against elite hitters of similar height and weight
-  higher     100 at or above the elite's 25th percentile, sliding to 0 at the lab's 2.5th percentile
-  lower      the mirror: 100 at or below the elite's 75th percentile, 0 at the lab's 97.5th percentile
-  range      100 inside the elite's 10th–90th percentile, 0 at the lab's 2.5th / 97.5th percentile
+  higher     100 at or above the elite's 25th percentile, sliding to 0 at the ZERO point below it
+  lower      the mirror: 100 at or below the elite's 75th percentile, 0 at the zero point above it
+  range      100 inside the elite's 10th–90th percentile, 0 at the zero points on either side
+             zero point = the band edge moved out by the larger of: twice the distance to the lab's 2.5th /
+             97.5th percentile, or one elite band width (p25–p75). Amateurs sit outside the lab's range on
+             some measurements; a 0 there for everyone would tell hitters apart by nothing.
   heel_turn  coaching rule (the lab has no foot markers): back foot turned >= 30° just after contact = 100,
              10° = 0, linear between
-A factor's percent = the mean of its measurements' percents. The headline ELITE MATCH = the mean over the
-factors that could be judged; "at elite level" = factors at 90% or more. Verdicts: >= 90 elite, >= 70 close,
+A factor's percent = the mean of its measurements' percents. The headline ELITE MATCH = the WEIGHTED mean over
+the factors that could be judged (weights below: the kinetic-chain factors the team ranks first, rotation, legs
+and step-through, and those the lab ties to bat speed most, count 1.5; the AI's Explosiveness 2, as the one
+judge of athleticism a front camera can't measure; contact point and stretch 1); "at elite level" = factors at
+90% or more. Verdicts: >= 90 elite, >= 70 close,
 else work on. One factor, Explosiveness, is rated by the AI coach from the video (with_ai) and labeled so.
 
 Kinetic chain behind the factors: ground -> legs -> pelvis -> torso -> arms -> bat, each part speeding up and then
@@ -36,42 +42,43 @@ from . import config, features
 ELITE_FILE = "elite_ref.json"
 ELITE_FRACTION = 1 / 3
 ELITE_PCT, CLOSE_PCT = 90.0, 70.0
+ZERO_STRETCH = 2.0      # zero point = band edge +/- max(ZERO_STRETCH x distance to the lab extreme, elite IQR)
 HEEL_FULL, HEEL_ZERO = 30.0, 10.0
 FRONT_CAMERA = "reads lower than true from a camera in front of the hitter"
 
 FACTORS = [
-    {"key": "hand_speed", "label": "Hand speed",
+    {"key": "hand_speed", "weight": 1.5, "label": "Hand speed",
      "help": "How fast your hands move: the result of everything else, and the closest thing to bat speed we can "
              "measure from one camera.",
      "parts": [("hand_speed_peak", "ratio")]},
-    {"key": "shoulder_turn", "label": "Shoulder turn",
+    {"key": "shoulder_turn", "weight": 1.5, "label": "Shoulder turn",
      "help": "How far your shoulders rotate from the coil to the finish.",
      "parts": [("torso_turn_total", "ratio")], "note": "shoulder turn " + FRONT_CAMERA + " (about 80%)"},
-    {"key": "hip_turn", "label": "Hip turn",
+    {"key": "hip_turn", "weight": 1.5, "label": "Hip turn",
      "help": "How far your hips rotate from the coil to the finish: the hips start the turn.",
      "parts": [("pelvis_turn_total", "ratio")], "note": "hip turn " + FRONT_CAMERA + " (about 60%)"},
-    {"key": "leg_drive", "label": "Leg drive",
+    {"key": "leg_drive", "weight": 1.5, "label": "Leg drive",
      "help": "The back side drives: your legs push your body toward the pitcher during the stride, and the back heel "
              "turns up and out as the back hip drives through.",
      "parts": [("drive_speed", "ratio"), ("rear_foot_turn", "heel_turn")]},
-    {"key": "front_leg_block", "label": "Front-leg block",
+    {"key": "front_leg_block", "weight": 1.5, "label": "Front-leg block",
      "help": "The front side brakes: the front leg lands and firms up (straightens) into contact, stopping the "
              "forward move so it turns into rotation.",
      "parts": [("lead_knee_extension", "higher"), ("lead_knee_flex_contact", "lower")]},
-    {"key": "contact_point", "label": "Contact point",
+    {"key": "contact_point", "weight": 1.0, "label": "Contact point",
      "help": "Your hands are out in front of your body when the bat reaches the ball.",
      "parts": [("hands_forward_contact", "higher")]},
-    {"key": "stretch", "label": "Stretch & stay closed",
+    {"key": "stretch", "weight": 1.0, "label": "Stretch & stay closed",
      "help": "Your hips turn ahead of your shoulders (the stretch across your core) while your shoulders stay closed "
              "until the front foot lands.",
      "parts": [("separation_max", "higher"), ("torso_yaw_fp", "lower")]},
-    {"key": "step_through", "label": "Step-through",
+    {"key": "step_through", "weight": 1.5, "label": "Step-through",
      "help": "The stride and plant: a controlled step, the front foot landing at the right time, then turning on it "
              "without sliding your hips or head toward the pitcher.",
      "parts": [("stride_length", "range"), ("fp_to_contact_ms", "range"), ("hips_drift_fp_contact", "range"),
                ("head_drift_fp_contact", "range")]},
 ]
-AI_FACTOR = {"key": "explosiveness", "label": "Explosiveness (AI coach's eye)",
+AI_FACTOR = {"key": "explosiveness", "weight": 2.0, "label": "Explosiveness (AI coach's eye)",
              "help": "An overall rating of how athletic and explosive the swing looks, by the AI coach from the video "
                      "alone (before it sees any numbers). Rated, not measured.",
              "note": "rated by the AI from the video, not measured"}
@@ -153,20 +160,25 @@ def part_percent(f: str, v: float, rule: str, ref: dict, height_m=None, mass_kg=
     if m is None:
         return None, {}
     e, a = m["elite"], m["all"]
+    iqr = e["p75"] - e["p25"]
+    zero_lo = lambda edge: edge - max(ZERO_STRETCH * (edge - a["p2.5"]), iqr)    # noqa: E731
+    zero_hi = lambda edge: edge + max(ZERO_STRETCH * (a["p97.5"] - edge), iqr)   # noqa: E731
     if rule == "ratio":
         med = size_matched_median(ref, f, height_m, mass_kg) if f in ref.get("size_matched", {}) else e["p50"]
         return float(np.clip(v / med, 0, 1) * 100) if med > 0 else None, {"elite_median": round(med, 3)}
     if rule == "higher":
-        lo, top = a["p2.5"], e["p25"]
+        top = e["p25"]
+        lo = zero_lo(top)
         return float(np.clip((v - lo) / (top - lo), 0, 1) * 100), {"elite_from": top, "elite_median": e["p50"]}
     if rule == "lower":
-        hi, top = a["p97.5"], e["p75"]
+        top = e["p75"]
+        hi = zero_hi(top)
         return float(np.clip((hi - v) / (hi - top), 0, 1) * 100), {"elite_up_to": top, "elite_median": e["p50"]}
-    lo_b, hi_b, lo, hi = e["p10"], e["p90"], a["p2.5"], a["p97.5"]
+    lo_b, hi_b = e["p10"], e["p90"]
     if lo_b <= v <= hi_b:
         p = 100.0
     else:
-        p = (v - lo) / (lo_b - lo) if v < lo_b else (hi - v) / (hi - hi_b)
+        p = (v - zero_lo(lo_b)) / (lo_b - zero_lo(lo_b)) if v < lo_b else (zero_hi(hi_b) - v) / (zero_hi(hi_b) - hi_b)
         p = float(np.clip(p, 0, 1) * 100)
     return p, {"elite_band": [lo_b, hi_b], "elite_median": e["p50"]}
 
@@ -200,15 +212,17 @@ def match(feats: dict, *, height_m: float | None = None, mass_kg: float | None =
             if p is not None:
                 ps.append(p)
         pct = round(float(np.mean(ps))) if ps else None
-        out.append({"key": fc["key"], "label": fc["label"], "help": fc["help"], "percent": pct, "verdict": verdict(pct),
+        out.append({"key": fc["key"], "label": fc["label"], "help": fc["help"], "weight": fc["weight"],
+                    "percent": pct, "verdict": verdict(pct),
                     "parts": parts, **({"note": fc["note"]} if fc.get("note") else {})})
     return _summarize({"factors": out, "standard": ref.get("definition"),
                        "elite_reference": {k: ref.get(k) for k in ("n_elite_swings", "n_elite_hitters", "n_swings")}})
 
 
 def _summarize(el: dict) -> dict:
-    judged = [f["percent"] for f in el["factors"] if f["percent"] is not None]
-    el["match"] = round(float(np.mean(judged))) if judged else None
+    fs = [f for f in el["factors"] if f["percent"] is not None]
+    judged = [f["percent"] for f in fs]
+    el["match"] = round(float(np.average(judged, weights=[f.get("weight", 1.0) for f in fs]))) if fs else None
     el["at_elite"] = sum(p >= ELITE_PCT for p in judged)
     el["n_judged"] = len(judged)
     return el
@@ -223,10 +237,10 @@ def with_ai(el: dict, rating: float | None, notes: str = "", source: dict | None
     return _summarize(el)
 
 
-def weakest(el: dict, *, include_ai: bool = False) -> tuple[dict, dict] | None:
-    """(factor, part) to coach: the lowest judged factor below elite level and its lowest part."""
+def weakest(el: dict, *, include_ai: bool = False, skip: tuple = ()) -> tuple[dict, dict] | None:
+    """(factor, part) to coach: the lowest judged factor below elite level (not in ``skip``) and its lowest part."""
     cands = [f for f in el["factors"] if f["percent"] is not None and f["percent"] < ELITE_PCT
-             and (include_ai or f["key"] != AI_FACTOR["key"]) and f["parts"]]
+             and (include_ai or f["key"] != AI_FACTOR["key"]) and f["parts"] and f["key"] not in skip]
     if not cands:
         return None
     fc = min(cands, key=lambda f: f["percent"])

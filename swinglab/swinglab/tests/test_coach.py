@@ -309,9 +309,12 @@ def test_elite_percent_rules():
     assert elite.part_percent("hand_speed_peak", 5.6, "ratio", REF, 1.95, 100)[0] == 70.0        # 5.6 / 8.0
     assert elite.part_percent("hand_speed_peak", 5.4, "ratio", REF, 1.75, 80)[0] == 90.0         # size-matched: / 6.0
     assert elite.part_percent("lead_knee_flex_contact", 18.0, "lower", REF)[0] == 100.0
-    assert elite.part_percent("lead_knee_flex_contact", 26.0, "lower", REF)[0] == 50.0           # halfway to p97.5
+    # zero point = elite p75 + max(2 x (lab p97.5 - p75), elite IQR) = 18 + 32 = 50
+    assert elite.part_percent("lead_knee_flex_contact", 26.0, "lower", REF)[0] == 75.0
+    assert elite.part_percent("lead_knee_flex_contact", 50.0, "lower", REF)[0] == 0.0
     assert elite.part_percent("stride_length", 0.11, "range", REF)[0] == 100.0
-    assert elite.part_percent("stride_length", 0.30, "range", REF)[0] == 0.0
+    assert elite.part_percent("stride_length", 0.40, "range", REF)[0] == 0.0
+    assert 0 < elite.part_percent("stride_length", 0.30, "range", REF)[0] < 50
     assert elite.part_percent("rear_foot_turn", 20.0, "heel_turn", REF)[0] == 50.0               # coaching rule
     assert elite.part_percent("rear_foot_turn", float("nan"), "heel_turn", REF)[0] is None
 

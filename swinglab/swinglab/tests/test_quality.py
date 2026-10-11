@@ -11,10 +11,10 @@ from test_pipeline import H, W, render_stray
 HITTER = {"name": "Test", "bats": "R", "height_m": 1.8, "mass_kg": 80, "age": 20}
 
 
-def rigid_swing(fps=60, T=2.0):
+def rigid_swing(fps=60, T=2.0, hip_rate=600.0):
     """synthetic_swing with knees and ankles turning with the hips, so thigh and shin keep their length
     (the original keeps knees fixed while hips rotate: its thigh changes 25% by construction)."""
-    t, J = synthetic_swing(fps=fps, T=T, smooth=True)
+    t, J = synthetic_swing(fps=fps, T=T, smooth=True, hip_rate=hip_rate)
     yaw = np.arctan2(J["l_hip"][:, 1], J["l_hip"][:, 0])
 
     def ring(r, z, a0):

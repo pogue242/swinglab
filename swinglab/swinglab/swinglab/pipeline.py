@@ -511,17 +511,19 @@ def analyze_recording(lidar: str | Path | None, slowmo: str | Path | None, hitte
     for k, w in enumerate(wins or [None]):
         rid = Path(lidar).stem if len(wins) <= 1 else f"{Path(lidar).stem}-{k + 1:02d}"
         try:
-            ts, js = session.cut(t, joints, w) if w is not None else (t, joints)
-            r = analyze_joints(ts, js, hitter, rid, q, partial=bool(w is not None and w.partial))
-            if w is None:
-                r["warnings"].append("no complete swing found (hand speed and shoulder turn never reached a swing's; "
-                                     "the recording may start after the swing); analyzed the whole clip, numbers unreliable")
-            else:
-                r["window"] = asdict(w)
-                if w.partial:
-                    r["warnings"].append("the recording starts mid-swing: the stance and load were not filmed, so "
-                                         "stance, stride and timing numbers for this swing are unreliable")
+            if w is None:    # a score for a clip with no swing in it would mean nothing (TestSet2: Matteo 6 = a follow-through)
+                raise NoSwing("no complete swing found in this recording: hand speed and a shoulder turn toward the "
+                              "pitcher never reached a swing's (it may start after the swing, or the hitter is out of frame)")
+            ts, js = session.cut(t, joints, w)
+            r = analyze_joints(ts, js, hitter, rid, q, partial=bool(w.partial))
+            r["window"] = asdict(w)
+            if w.partial:
+                r["warnings"].append("the recording starts mid-swing: the stance and load were not filmed, so "
+                                     "stance, stride and timing numbers for this swing are unreliable")
             r["stages"] = {"lidar": {"ok": True, **r["quality"]}}
+        except NoSwing as e:
+            r = {"id": rid, "hitter": hitter.get("name", ""), "window": None, "no_swing": True,
+                 "stages": {"lidar": {"ok": False, "error": str(e)}}}
         except Exception as e:
             r = {"id": rid, "hitter": hitter.get("name", ""), "window": asdict(w) if w else None,
                  "stages": {"lidar": {"ok": False, "error": f"{type(e).__name__}: {e}", "trace": traceback.format_exc()[-800:]}}}
@@ -529,6 +531,7 @@ def analyze_recording(lidar: str | Path | None, slowmo: str | Path | None, hitte
         r["recording_t0"] = float(t[0])          # window times minus this = seconds into the recording's video
         recs.append(r)
     good = [r for r in recs if "analysis" in r]
+    rotate_focus(good)
     assigned, matching = {}, None
     if clips and good:
         by_index, matching = match_slowmo(lidar, good, clips, float(t[0]), **slow_kw)
@@ -557,6 +560,33 @@ def analyze_recording(lidar: str | Path | None, slowmo: str | Path | None, hitte
                                                       "partial": r["window"].get("partial", False)}
                                                      for r in good if r.get("window")]}
     return {"recs": recs, "summary": summary, "n_swings": len(wins)}
+
+
+class NoSwing(ValueError):
+    """The recording holds no complete swing."""
+
+
+def rotate_focus(recs: list[dict], min_swings: int = 3) -> None:
+    """When one factor is the focus of most swings in a recording (3+ and more than half), say it once as the
+    recording's recurring focus and coach each of those swings on its next-lowest factor instead, so the
+    feedback doesn't repeat ("front-leg block" on 9 of 12 TestSet2 swings)."""
+    from collections import Counter
+    from . import scoring
+    keys = [((r.get("analysis") or {}).get("focus") or {}).get("factor") for r in recs]
+    counts = Counter(k for k in keys if k)
+    if not counts:
+        return
+    top, n = counts.most_common(1)[0]
+    if n < min_swings or n <= len(recs) / 2:
+        return
+    for r, k in zip(recs, keys):
+        an = r["analysis"]
+        an["recurring_focus"] = {"factor": top, "label": next(f["label"] for f in an["elite"]["factors"] if f["key"] == top),
+                                 "swings": n, "of": len(recs)}
+        if k == top:
+            alt = scoring.elite_focus(an, skip=(top,))
+            if alt:
+                an["focus"] = alt
 
 
 def swing_clip(rec: dict, out_base: Path, *, height: int = 720) -> Path | None:
