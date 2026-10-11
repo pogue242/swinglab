@@ -365,7 +365,8 @@ def render_swing(rec: dict, out: str | Path, *, video: str | Path | None = None,
                 if i > f1:
                     break
                 ti = (ts_all[i - f0] if ts_all else i / fps) - t_off   # timestamps cover frames f0..f1
-                yield img, ti, {n: tuple(p) for n, p in kp2d.get(i, {}).items()}
+                # pose runs on every 2nd frame: the frames between reuse the last pose (no flickering skeleton)
+                yield img, ti, {n: tuple(p) for n, p in (kp2d.get(i) or kp2d.get(i - 1) or {}).items()}
         src_size = tuple(vid.get("size") or (0, 0))
     else:   # lab swing (or no video file): blank background, 3D joints projected
         fps = float(rec.get("fps", 30))

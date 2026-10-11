@@ -213,3 +213,18 @@ def test_saved_json_has_no_bare_nan(tmp_path):
     p = pipeline.save_result(rec, "s", out_root=tmp_path, render_video=False)
     back = json.loads(p.read_text(encoding="utf-8"))
     assert "NaN" not in p.read_text(encoding="utf-8") and back["quality"] == {"r_pelvis": None, "a": [1.0, None, 2.5]}
+
+
+def test_recorded_at_skips_a_recording_name_that_is_not_a_file(tmp_path):
+    """The recording's bare name ('angle 1- lidar 11.r3d') was taken as the file and the date came out empty;
+    the static site then labelled every swing 'Lab swing'."""
+    frames = tmp_path / "rec_r3d" / "rgbd"
+    frames.mkdir(parents=True)
+    (frames / "0.jpg").write_bytes(b"x")
+    rec = {"recording": "angle 1- lidar 11.r3d", "video": {"path": str(frames / "%d.jpg")}}
+    assert pipeline.recorded_at(rec) is not None
+    named = {"recording": "2026-10-09--22-17-12.r3d", "window": {"start": 2.0}}       # Record3D names carry the time
+    assert pipeline.recorded_at(named) == "2026-10-09 22:17:14"
+    saved = pipeline.save_result({"id": "x", "recorded_at": None, "analysis": {"scores": {}}}, "s", out_root=tmp_path,
+                                 render_video=False)
+    assert json.loads(saved.read_text(encoding="utf-8"))["recorded_at"]                # never empty once saved

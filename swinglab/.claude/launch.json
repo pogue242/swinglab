@@ -4,8 +4,25 @@
     {
       "name": "swinglab-server",
       "runtimeExecutable": "C:/Users/darkn/Projects/hack knights/baseball-batting-analyze/swinglab/swinglab/.venv/Scripts/python.exe",
-      "runtimeArgs": ["C:/Users/darkn/Projects/hack knights/baseball-batting-analyze/swinglab/swinglab/api/server.py", "--port", "8000", "--debounce", "3"],
+      "runtimeArgs": [
+        "C:/Users/darkn/Projects/hack knights/baseball-batting-analyze/swinglab/swinglab/api/server.py",
+        "--port",
+        "8000",
+        "--demo"
+      ],
       "port": 8000
+    },
+    {
+      "name": "swinglab-site",
+      "runtimeExecutable": "C:/Users/darkn/Projects/hack knights/baseball-batting-analyze/swinglab/swinglab/.venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8001",
+        "--directory",
+        "C:/Users/darkn/Projects/hack knights/baseball-batting-analyze/swinglab/swinglab/site"
+      ],
+      "port": 8001
     }
   ]
 }

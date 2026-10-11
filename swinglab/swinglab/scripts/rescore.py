@@ -67,7 +67,8 @@ def main():
                 continue
             old = json.loads(sp.read_text(encoding="utf-8"))
             new = session.summarize(recs, source=old.get("source"), quality=old.get("quality"))
-            for k in ("report", "report_source", "recording_video", "notes", "slowmo_matching", "hitter", "warnings", "recording"):
+            for k in ("report", "report_source", "recording_video", "notes", "slowmo_matching", "slowmo_long", "hitter",
+                      "warnings", "recording"):
                 if k in old:
                     new[k] = old[k]
             sp.write_text(pipeline.dump_json(new), encoding="utf-8")

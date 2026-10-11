@@ -177,3 +177,19 @@ def test_detector_hit_does_not_reuse_the_trackers_path(monkeypatch, tmp_path):
     out = pipeline.analyze_slowmo(clip, fps=240, track_bat=False)
     assert out["ball_outcome"] == "hit" and out["exit_speed_mph"] is None and out["exit_speed_rough_mph"] == 25.0
     assert out["contact_frame"] is None
+
+
+@pytest.mark.real_ball_check
+def test_toss_that_vanishes_at_the_bat_is_a_hit_and_one_falling_past_the_waist_a_miss():
+    """TestSet4: a ball hit toward / away from the camera is never seen flying; it just vanishes at bat height.
+    A miss keeps falling past the hitter's waist."""
+    person = (B.COCO_PERSON, 0.9, 200.0, 500.0, 150.0, 400.0)          # waist ~ y 520
+    def toss(last_y):
+        def detect(i):
+            y = 150.0 + 4 * i
+            return [person] + ([(B.COCO_SPORTS_BALL, 0.5, 250.0, y, 12.0, 12.0)] if y <= last_y else [])
+        return detect
+    vanished = B.detector_ball_outcome(range(200), fps=240.0, detect=toss(460.0))   # gone at bat height
+    assert vanished["kind"] == "hit" and vanished["how"] == "left_view" and vanished["exit_speed_mph"] is None
+    fell = B.detector_ball_outcome(range(200), fps=240.0, detect=toss(700.0))       # on past the waist
+    assert fell["kind"] == "miss"
