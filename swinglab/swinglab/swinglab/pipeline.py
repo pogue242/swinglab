@@ -454,6 +454,7 @@ def _finish(rec: dict, hitter: dict, slow: dict | None, slow_video, use_gemini: 
         return
     if quick:
         rec["pending"] = ["ball check", "coach report", "video"]
+        rec.pop("overlay", None)          # an older video of this swing would show old numbers until phase 2
         rec["mode"], rec["mode_evidence"] = "dry", f"provisional: {PENDING_NOTE}"
         rec["analysis"]["mode"] = "dry"
         _coach(rec, hitter, measured, False, template_reason="quick demo mode: the AI coach report follows")
@@ -800,7 +801,8 @@ def save_result(rec: dict, session: str, out_root: Path | None = None, *, render
     d = out_root / "swings" / session
     d.mkdir(parents=True, exist_ok=True)
     rec.setdefault("analyzed_at", time.strftime("%Y-%m-%d %H:%M:%S"))
-    rec.setdefault("recorded_at", recorded_at(rec))
+    if not rec.get("recorded_at"):
+        rec["recorded_at"] = recorded_at(rec) or rec["analyzed_at"]
     if render_video:
         render_overlay(rec, d / str(rec["id"]), out_root)
     p = d / f"{rec['id']}.json"
@@ -813,13 +815,16 @@ def recorded_at(rec: dict) -> str | None:
     """When the swing was recorded: the recording's start time (Record3D names) + the swing's offset,
     else the recording file's modification time."""
     import time
-    src = rec.get("recording") or (rec.get("pair") or {}).get("lidar")
     start = None
     path = None
-    for cand in (src, (rec.get("video") or {}).get("path")):
+    # the recording file first (its own name can carry the start time; its date is the next best), then the
+    # recording's name, then the frames; a name that is not a file on this computer is skipped for the date
+    for cand in ((rec.get("pair") or {}).get("lidar"), rec.get("recording"), (rec.get("video") or {}).get("path")):
         if cand:
             start = start or capture.recording_start_time(cand)
-            path = path or (Path(str(cand).split("%d")[0]).parent if "%d" in str(cand) else Path(cand))
+            c = Path(str(cand).split("%d")[0]).parent if "%d" in str(cand) else Path(cand)
+            if path is None and c.exists():
+                path = c
     if start is not None:
         start += float((rec.get("window") or {}).get("start") or 0.0)
     elif path is not None and path.exists():
