@@ -53,8 +53,9 @@ def report(payload: dict) -> SwingReport:
     if name and name not in TEMPLATES:
         headline = f"Work on: {f.get('label', name).lower()}"
     s = payload["scores_0_100"]
-    what = (f"Your form scores: power {s['power']:.0f}, sequencing {s['transfer']:.0f}, posture {s['posture']:.0f} "
-            f"(percentiles vs. Driveline lab swings).")
+    parts = [f"{lab} {s[k]:.0f}" for k, lab in (("power", "power"), ("transfer", "sequencing"), ("posture", "posture"))
+             if s.get(k) is not None]
+    what = f"Your form scores: {', '.join(parts)} (graded against Driveline lab swings)."
     if f:
         what += f" {f['label']}: {f['value']:g} {f['unit']} vs. about {f['typical']:g} for a typical lab hitter."
     why = (f"In the lab data, hitters your size with values like this tended to swing about "

@@ -95,6 +95,14 @@ class GroupScorer:
         return sorted(out, key=lambda d: d["effect_mph"])
 
 
+# A partial swing (the recording starts mid-swing: session.SwingWindow.partial) has no stance and
+# no reliable load or foot plant, so everything measured from them is skipped for that swing.
+NEEDS_STANCE = ("stance_width", "stride_length", "separation_fp", "separation_max", "pelvis_yaw_fp", "torso_yaw_fp",
+                "fp_to_contact_ms", "lead_knee_flex_fp", "lead_knee_extension", "head_drift_fp_contact",
+                "hips_drift_fp_contact", "seq_order_ok")
+PARTIAL_REASON = "the recording starts mid-swing: no stance, load or foot plant was filmed"
+
+
 def lab_ranges(tab: pd.DataFrame) -> dict[str, dict]:
     """Lab spread of every feature: {feature: {"p2.5", "p10", ..., "p97.5", "better"(, "share_yes")}}."""
     out = {}
@@ -145,15 +153,16 @@ def feature_weights(scorers: dict) -> dict[str, float]:
     return w
 
 
-def grade_swing(row: dict, scorers: dict, ranges: dict) -> dict:
+def grade_swing(row: dict, scorers: dict, ranges: dict, unreliable: dict | None = None) -> dict:
     """Per-feature grades and the three group scores: {"grades": {feature: {grade, weight, value,
     better, lab_p25, lab_median, lab_p75, label, unit}}, "scores": {group: 0–100 or None},
-    "not_graded": [{feature, label, reason}]}."""
+    "not_graded": [{feature, label, reason}]}. ``unreliable``: {feature: reason} skipped for this swing only."""
     w = feature_weights(scorers)
+    skip = {**NOT_GRADED, **(unreliable or {})}
     grades, groups, skipped = {}, {g: [] for g in GROUP_TARGET}, []
     for f, (grp, label, unit) in features.FEATURES.items():
-        if f in NOT_GRADED:
-            skipped.append({"feature": f, "label": label, "reason": NOT_GRADED[f]})
+        if f in skip:
+            skipped.append({"feature": f, "label": label, "reason": skip[f]})
             continue
         v = row.get(f)
         v = np.nan if v is None else float(v)
@@ -181,18 +190,21 @@ def fit_scorers(tab: pd.DataFrame) -> dict[str, GroupScorer]:
     return scorers
 
 
-def analyze(row: dict, models: dict, scorers: dict, covariates: dict, ranges: dict | None = None) -> dict:
-    """Full result for one swing: predictions, graded scores, focus, tree paths."""
+def analyze(row: dict, models: dict, scorers: dict, covariates: dict, ranges: dict | None = None,
+            unreliable: dict | None = None) -> dict:
+    """Full result for one swing: predictions, graded scores, focus, tree paths. ``unreliable``:
+    {feature: reason} not graded (nor coached) for this swing, e.g. NEEDS_STANCE on a partial swing."""
     full = {**row, **covariates}
-    gs = grade_swing(row, scorers, ranges or load_ranges())
+    gs = grade_swing(row, scorers, ranges or load_ranges(), unreliable)
     res = {"predicted": {k: round(m.predict(full), 1) for k, m in models.items()}, "grading": "lab_range_v2",
-           "scores": {g: (v if v is not None else 0.0) for g, v in gs["scores"].items()}}
-    res["scores"]["form"] = round(float(np.mean([res["scores"][g] for g in GROUP_TARGET])), 1)
+           "scores": dict(gs["scores"])}       # a group with nothing gradable (partial swing) is None
+    have = [g for g in GROUP_TARGET if res["scores"][g] is not None]
+    res["scores"]["form"] = round(float(np.mean([res["scores"][g] for g in have])), 1) if have else 0.0
     res["scores"]["contact"] = None          # set by with_contact() when a ball was hit
     res["scores"]["overall"] = res["scores"]["form"]
     res["scores_lab_model"] = {g: sc.score(row)[0] for g, sc in scorers.items()}
     res["grades"], res["not_graded"] = gs["grades"], gs["not_graded"]
-    weakest = min(GROUP_TARGET, key=lambda g: res["scores"][g])
+    weakest = min(have or GROUP_TARGET, key=lambda g: res["scores"][g] or 0.0)
     res["weakest_group"] = weakest
     gr = gs["grades"]
     res["contributions"] = {g: [{**c, "grade": gr[c["feature"]]["grade"], "lab_p25": gr[c["feature"]]["lab_p25"],

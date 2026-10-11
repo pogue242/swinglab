@@ -272,3 +272,19 @@ def test_key_features_are_graded_and_the_heaviest():
     graded = sorted((f for f in w if f not in scoring.NOT_GRADED), key=lambda f: -w[f])
     assert not set(features.KEY_FEATURES) & set(scoring.NOT_GRADED)
     assert set(features.KEY_FEATURES) == set(graded[:6])
+
+
+@needs_models
+def test_partial_swing_is_not_coached_on_its_stance():
+    """UI report: a partial swing (no stance filmed) got 'Work on: stance width'."""
+    import joblib
+    from swinglab import config, model, scoring
+    models, scorers = model.load(), joblib.load(config.MODELS / "scorers.joblib")
+    row = model.load_table().iloc[0]
+    feats = {**row[model.MECHANICS].to_dict(), "stance_width": 0.05}          # absurd stance
+    unrel = dict.fromkeys(scoring.NEEDS_STANCE, scoring.PARTIAL_REASON)
+    a = scoring.analyze(feats, models, scorers, row[model.COVARIATES].to_dict(), unreliable=unrel)
+    assert not set(scoring.NEEDS_STANCE) & set(a["grades"]) and (a["focus"] or {}).get("feature") not in scoring.NEEDS_STANCE
+    assert any(n["reason"] == scoring.PARTIAL_REASON for n in a["not_graded"])
+    assert a["scores"]["transfer"] is None and a["scores"]["form"] == round((a["scores"]["power"] + a["scores"]["posture"]) / 2, 1)
+    assert all(c["feature"] not in scoring.NEEDS_STANCE for cs in a["contributions"].values() for c in cs)

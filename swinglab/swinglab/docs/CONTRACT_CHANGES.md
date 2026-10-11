@@ -36,6 +36,10 @@ Other additions:
   not read either.
 
 ### 2026-10-11 later (answers to "Requested by UI" below)
+- **Partial swings / model path** (UI request 2026-10-11): done. A partial swing is not graded or coached on
+  anything measured from the stance, load or foot plant (`scoring.NEEDS_STANCE`; listed in
+  `analysis.not_graded` with the reason); a group left with nothing to grade is `null` and Form averages the
+  others. `mode_evidence` now says "ball detector not installed: treated as a dry swing" (path only in the log).
 - **NaN**: done. Swing and summary JSON go through `pipeline.json_safe` (NaN / ±inf -> `null`) and
   `allow_nan=False`. Files written before this still contain NaN until re-analyzed.
 - **Negative `pelvis_vel` / `torso_vel`**: the sign is meaningful: **+ = turning open toward the pitcher,
@@ -59,6 +63,17 @@ Other additions:
   `analysis.grading` = "lab_range_v2", `analysis.scores_lab_model` (old scores, for comparison).
   **Changed meaning**: `analysis.scores.power/transfer/posture/form/overall` are now weighted grades vs the
   lab spread, not percentiles of a predicted bat speed (typical lab swing ~70, not 50).
+
+### 2026-10-11: for the UI session, from the user (FUNC relays)
+- **Whole-recording view should be the default** for multi-swing recordings: the recording's video with its
+  swings listed on the side (timestamps, and thumbnails/short videos if possible); tapping a swing opens that
+  swing's breakdown (today's view). Keep today's one-swing-at-a-time view as the other option (toggle).
+  Data: `GET /api/profiles/{id}/recordings` (above): `video.url` plays the whole recording, `swings[].t.peak`
+  are seconds into it, `swings[].url` / `video_url` are the swing's JSON and annotated video.
+- Partial swings (`swings[].partial`) should be marked, not hidden.
+- Coming next from FUNC (scoring redesign agreed with the user): `analysis.elite`, a review of ~9 factors,
+  each "% of elite" with the measurements behind it, plus a count of factors at elite level and one AI-rated
+  factor (from the video). Field list will be posted here when it lands.
 
 ## Requested by UI
 - 2026-10-11 (after re-analyzing Adam with func/scoring): swing 1 is `window.partial` and its warning says

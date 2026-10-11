@@ -101,7 +101,8 @@ def lift_recording(folder: str | Path, *, pose_model: str | Path | None = None, 
     return cap.timestamps, joints, quality
 
 
-def analyze_joints(t: np.ndarray, joints: dict, hitter: dict, rec_id: str, quality: dict | None = None) -> dict:
+def analyze_joints(t: np.ndarray, joints: dict, hitter: dict, rec_id: str, quality: dict | None = None,
+                   partial: bool = False) -> dict:
     """World-frame joints for ONE swing -> full record (skeleton, events, features, scores)."""
     # a joint seen in too few frames would be one straight interpolated line (or NaN, which crashes smoothing)
     lr = skeleton.to_lead_rear(joints, hitter["bats"])
@@ -119,7 +120,8 @@ def analyze_joints(t: np.ndarray, joints: dict, hitter: dict, rec_id: str, quali
     ev = K.detect_events(sk, s)
     f = features.compute(sk, ev, s)
     models, scorers = _models()
-    an = scoring.analyze(f, models, scorers, covariates(hitter))
+    an = scoring.analyze(f, models, scorers, covariates(hitter),
+                         unreliable=dict.fromkeys(scoring.NEEDS_STANCE, scoring.PARTIAL_REASON) if partial else None)
     quality = dict(quality or {})
     video = _video_for(quality.pop("_video", None), t)
     quality["bones"] = Q.bone_lengths(sk)
@@ -370,7 +372,8 @@ def decide_mode(rec: dict, *, detect=None) -> None:
                         ev = (f"LiDAR phone video: the blob tracker reported a {r['kind']}, but the ball detector "
                               f"found no ball near it in {chk['frames_checked']} frames before contact: dry swing")
             except FileNotFoundError as e:
-                kind, ev = "none", f"ball detector model missing ({e}): treated as a dry swing"
+                print(f"[ball check] {e}")                    # the path goes to the log, not to the user
+                kind, ev = "none", "ball detector not installed: treated as a dry swing"
             except Exception as e:
                 kind, ev = "none", f"could not check the video for a ball ({type(e).__name__}): treated as a dry swing"
     rec["mode"] = {"hit": "hit", "miss": "miss"}.get(kind, "dry")
@@ -508,7 +511,7 @@ def analyze_recording(lidar: str | Path | None, slowmo: str | Path | None, hitte
         rid = Path(lidar).stem if len(wins) <= 1 else f"{Path(lidar).stem}-{k + 1:02d}"
         try:
             ts, js = session.cut(t, joints, w) if w is not None else (t, joints)
-            r = analyze_joints(ts, js, hitter, rid, q)
+            r = analyze_joints(ts, js, hitter, rid, q, partial=bool(w is not None and w.partial))
             if w is None:
                 r["warnings"].append("no complete swing found (hand speed and shoulder turn never reached a swing's; "
                                      "the recording may start after the swing); analyzed the whole clip, numbers unreliable")
