@@ -864,7 +864,8 @@ function renderElite(){
     <div class="em-exp" hidden><p><b>Elite</b> = the top third of ${ref.n_swings||677} Driveline lab swings by bat speed for the hitter's size
       (${ref.n_elite_swings||226} swings from ${ref.n_elite_hitters||58} hitters).</p>
       <p>Each factor below is scored as a <b>% of elite</b>. The elite match is their <b>weighted average</b>
-      (weights shown as ×; ${wsum} in total on this swing), so legs and rotation count most.</p>
+      (weights shown as ×; ${wsum} in total on this swing), so legs and rotation count most, <b>minus ${el.deduction??0} points</b>
+      so that only near-elite swings reach the 80s${el.weighted_average!=null?` (this swing: ${el.weighted_average} − ${el.deduction??0} = ${el.match})`:""}.</p>
       <p>A factor at <b>90% or more</b> is “at elite level” (green); 70–89% is close (blue); under 70% is something to work on (red).
       For a dry swing the elite match is the Overall and Form score; for a hit, Overall also averages in ball contact.</p>
       <p class="fine">* reads lower than true from a camera in front of the hitter. The AI coach does not score; it guides the coaching.</p></div></div>

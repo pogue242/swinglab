@@ -249,12 +249,23 @@ def _panel(rec: dict, t: float, *, title: str, end: bool = False, slow: dict | N
                "overall\n" + ("form + ball contact" if sc.get("contact") is not None else "form (dry swing)"),
                font=_font(14), fill=muted)
         y = 214
-        rows = [("form", "Form", True), ("power", "Power", False), ("transfer", "Sequencing", False),
-                ("posture", "Posture", False), ("contact", "Contact", True)]
+        el = an.get("elite") or {}
+        if el.get("factors"):   # the elite-match review (elite.py): headline + one bar per factor
+            vals = {"form": sc.get("form"), "contact": sc.get("contact")}
+            rows = [("form", "Elite match", True)]
+            for f in el["factors"]:
+                if f.get("key") != "explosiveness" and f.get("percent") is not None:
+                    vals[f["key"]] = f["percent"]
+                    rows.append((f["key"], f["label"].replace(" & stay closed", ""), False))
+            rows.append(("contact", "Contact", True))
+        else:
+            vals = sc
+            rows = [("form", "Form", True), ("power", "Power", False), ("transfer", "Sequencing", False),
+                    ("posture", "Posture", False), ("contact", "Contact", True)]
         for k, lab, main in rows:
-            if sc.get(k) is None:
+            if vals.get(k) is None:
                 continue
-            v = float(sc[k])
+            v = float(vals[k])
             col = (92, 196, 137) if v >= 60 else (240, 166, 58) if v >= 35 else (255, 122, 112)
             d.text((22 if main else 36, y), lab, font=_font(18 if main else 15, main), fill=ink if main else muted)
             d.rounded_rectangle((140, y + 4, 300, y + 16), 6, fill=(43, 51, 60))

@@ -176,7 +176,8 @@ def video_frames(video: str | Path):
 
 def analyze_slowmo(video: str | Path, *, fps: float = 240.0, m_per_px: float | None = None,
                    max_frames: int = 2400, yardstick: str | Path | None = None, tape=None,
-                   track_bat: bool = True, bat_width_px: int = 960, stick_length_m: float = 0.9144) -> dict:
+                   track_bat: bool = True, bat_width_px: int = 960, stick_length_m: float = 0.9144,
+                   confirm_ball: bool = True) -> dict:
     """240 fps side video -> ball off the tee (contact frame, exit speed, launch angle) and the bat
     from its two tape bands (bat speed at the sweet spot, end-band speed, bat and attack angle).
     All in the image plane: motion toward or away from the camera is not seen.
@@ -184,6 +185,8 @@ def analyze_slowmo(video: str | Path, *, fps: float = 240.0, m_per_px: float | N
     Scale (m/px at the tee): ``m_per_px``, else the ``yardstick`` clip (scale_from_yardstick), else
     the ball's size on the tee. Contact = the ball leaving the tee; on a dry swing, the frame of
     peak bat speed. ``tape`` = ballflight.BatTape (where the tape is on the bat).
+    ``confirm_ball``: a hit or miss from the blob tracker stands only when the object detector (YOLOX "sports
+    ball", ballflight.confirm_ball) also sees a ball near the tracked one (as on the LiDAR video).
     Two passes over the file, so long clips never sit in memory."""
     import cv2
     from . import ballflight as B
@@ -209,6 +212,19 @@ def analyze_slowmo(video: str | Path, *, fps: float = 240.0, m_per_px: float | N
         if track_bat and i % step == 0:
             bg_samples.append(cv2.resize(cv2.cvtColor(fr, cv2.COLOR_BGR2GRAY), None, fx=shrink, fy=shrink))
     ev = B.ball_events(dets, expected_r=exp_r, fps=fps)          # tee hit, toss hit, miss, or no ball
+    ball_check = None
+    if confirm_ball and ev["kind"] in ("hit", "miss"):
+        last = ev.get("last_rest_frame") if ev["kind"] == "hit" else None
+        last = min(len(dets), max_frames) - 1 if last is None else int(last)
+        every = max(1, (last + 1) // 40)              # ~40 detector looks before contact
+        try:
+            ball_check = {"tracker": ev["kind"], **B.confirm_ball(islice(video_frames(video), 0, last + 1),
+                                                                 ev["xy"][: last + 1], every=every, near_px=160.0)}
+        except FileNotFoundError as e:
+            ball_check = {"tracker": ev["kind"], "confirmed": False, "error": str(e)[:200]}
+        if not ball_check["confirmed"]:
+            ev = {**ev, "kind": "none", "how": None, "reason": f"the tracker reported a {ev['kind']}, but the ball "
+                  f"detector found no ball near it in {ball_check.get('frames_checked', 0)} frames: no ball"}
     tb = ev if ev["kind"] == "hit" else None
     xy = ev["xy"]
     c = None
@@ -221,7 +237,7 @@ def analyze_slowmo(video: str | Path, *, fps: float = 240.0, m_per_px: float | N
     out = {"frames": len(dets), "ball_found_fraction": round(float(np.isfinite(xy[:, 0]).mean()), 3) if dets else 0,
            "contact_frame": c, "m_per_px": m_per_px, "scale_source": scale_source, "yardstick": yinfo, "exit_speed_mph": None,
            "launch_angle_deg": None, "bat_speed_mph": None, "bat": None, "fps": fps,
-           "ball_outcome": ev["kind"], "ball_how": ev["how"], "ball_reason": ev["reason"],
+           "ball_outcome": ev["kind"], "ball_how": ev["how"], "ball_reason": ev["reason"], "ball_check": ball_check,
            # ball positions around contact, for the annotated replay (render.py)
            "track_px": {str(i): [round(float(xy[i, 0]), 1), round(float(xy[i, 1]), 1)]
                         for i in range(max(0, (c or 0) - 20), min(len(xy), (c or 0) + 80)) if np.isfinite(xy[i, 0])}}

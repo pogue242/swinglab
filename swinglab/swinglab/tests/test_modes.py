@@ -101,6 +101,7 @@ def _fake_detector(ball_at: dict[int, tuple[float, float]]):
     return detect
 
 
+@pytest.mark.real_ball_check
 def test_confirm_ball_needs_detections_near_the_tracked_ball():
     frames = list(range(30))
     xy = np.full((30, 2), np.nan)
@@ -115,6 +116,7 @@ def test_confirm_ball_needs_detections_near_the_tracked_ball():
     assert not B.confirm_ball(frames, xy, detect=_fake_detector({}))["confirmed"]
 
 
+@pytest.mark.real_ball_check
 def test_tracker_hit_without_a_detected_ball_is_a_dry_swing(monkeypatch):
     """TestSet2: dry swings were labeled hit/miss from bright blobs; the detector must veto them."""
     xy = np.full((40, 2), np.nan)

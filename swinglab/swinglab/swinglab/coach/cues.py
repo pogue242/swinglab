@@ -117,7 +117,7 @@ def _plain(payload: dict) -> str:
     """Opening paragraph from payload["plain_language"] (coach/plain.py phrases): no numbers, no jargon."""
     pl = payload.get("plain_language") or {}
     fs, ss = pl.get("faults") or [], pl.get("strengths") or []
-    out = [f"Good things first: {' and '.join(ss)}."] if ss else []
+    out = [f"What's working: {' and '.join(ss)}."] if ss else []
     if fs:
         out.append(f"The biggest thing holding you back: {fs[0]['phrase']}.")
         if len(fs) > 1:

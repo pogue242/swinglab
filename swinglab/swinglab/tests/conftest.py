@@ -26,3 +26,14 @@ def _no_live_gemini(request, monkeypatch):
     if "live" not in request.keywords:
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
         monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _synthetic_balls_pass_the_detector(request, monkeypatch):
+    """Rendered test balls are plain white circles that YOLOX doesn't call a "sports ball"; outside the tests of
+    the detector check itself (marked ``real_ball_check``), the slow-motion confirmation passes them."""
+    if "real_ball_check" in request.keywords:
+        return
+    from swinglab import ballflight
+    monkeypatch.setattr(ballflight, "confirm_ball", lambda frames, tracked_xy=None, **kw: {
+        "confirmed": True, "frames_checked": 0, "frames_with_ball": 0, "near_track": True, "best_score": 1.0})

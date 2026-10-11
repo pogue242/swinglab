@@ -91,7 +91,7 @@ def summary(elite: dict | None) -> str:
     fs, ss = faults(elite), strengths(elite)
     parts = []
     if ss:
-        parts.append(f"Good things first: {' and '.join(ss)}.")
+        parts.append(f"What's working: {' and '.join(ss)}.")
     if fs:
         parts.append(f"The biggest thing holding you back: {fs[0]['phrase']}.")
         if len(fs) > 1:

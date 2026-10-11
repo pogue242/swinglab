@@ -325,7 +325,8 @@ def test_elite_match_headline_count_and_ai_factor():
     ref = elite.load_reference()
     med = {f: m["elite"]["p50"] for f, m in ref["measurements"].items()}
     el = elite.match({**med, "rear_foot_turn": 40.0}, height_m=1.8, mass_kg=85, ref=ref)
-    assert el["n_judged"] == len(elite.FACTORS) and el["match"] >= 95 and el["at_elite"] >= len(elite.FACTORS) - 1
+    assert el["n_judged"] == len(elite.FACTORS) and el["weighted_average"] >= 95 and el["at_elite"] >= len(elite.FACTORS) - 1
+    assert el["match"] == el["weighted_average"] - elite.SCORE_DEDUCTION      # the fixed deduction
     weak = elite.match({**med, "rear_foot_turn": 40.0, "lead_knee_extension": -20.0, "lead_knee_flex_contact": 60.0}, ref=ref)
     fc, part = elite.weakest(weak)
     assert fc["key"] == "front_leg_block" and fc["verdict"] == "work on" and weak["match"] < el["match"]

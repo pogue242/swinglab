@@ -18,5 +18,6 @@ packages = ["swinglab", "swinglab.coach"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["live: calls the real Gemini API (needs GEMINI_API_KEY); run with -m live"]
+markers = ["live: calls the real Gemini API (needs GEMINI_API_KEY); run with -m live",
+           "real_ball_check: uses the real ballflight.confirm_ball (not the test pass-through)"]
 addopts = "-m 'not live'"
