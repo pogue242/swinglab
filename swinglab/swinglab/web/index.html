@@ -19,6 +19,7 @@
   --stage:#FAFAF8; color-scheme:light;
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{background:var(--bg);color:var(--ink)}
 body{font:15px/1.5 var(--body);margin:0}
 table{color:inherit;font:inherit}
@@ -83,8 +84,26 @@ button{font:inherit;color:inherit}
 .phone a{color:var(--navy);word-break:break-all}
 .phone div:last-child{min-width:0;overflow-wrap:anywhere}
 dialog{overflow-x:hidden}
-.upmsg{font-size:14px;margin:10px 0 0;min-height:1.3em}
-.upmsg.ok{color:var(--good)}.upmsg.err{color:var(--red)}
+.upmsg{font-size:14px;margin:10px 0 0;color:var(--ink)}
+.upmsg:empty{display:none}
+.upmsg.ok,.upmsg.err,.upmsg.info{border-left:3px solid var(--navy);background:var(--navy-50);border-radius:6px;padding:8px 10px}
+.upmsg.ok{border-left-color:var(--good);background:color-mix(in srgb,var(--good) 9%,#fff)}
+.upmsg.err{border-left-color:var(--red);background:var(--red-50)}
+.upmsg details{margin-top:6px;font-size:12px;color:var(--muted)}
+.upmsg details code{display:block;white-space:pre-wrap;word-break:break-word;margin-top:4px;font:11px var(--mono)}
+/* upload progress: upload → queued → analyzing → ready */
+.steps{list-style:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:0;margin:14px 0 0;counter-reset:st}
+.steps li{counter-increment:st;font:500 12px var(--body);color:var(--muted);text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px}
+.steps li::before{content:counter(st);display:grid;place-items:center;width:24px;height:24px;border-radius:50%;border:2px solid var(--line);background:#fff;font:600 12px var(--body);color:var(--muted)}
+.steps li.done::before{content:"✓";background:var(--navy);border-color:var(--navy);color:#fff}
+.steps li.now{color:var(--ink);font-weight:600}
+.steps li.now::before{border-color:var(--red);color:var(--red)}
+.steps li.fail{color:var(--red)}
+.steps li.fail::before{content:"!";background:var(--red);border-color:var(--red);color:#fff}
+.upstate{display:flex;align-items:center;gap:10px;font-size:14px;margin-top:10px;color:var(--ink)}
+.upstate small{color:var(--muted);display:block}
+.spin{flex:0 0 auto;width:18px;height:18px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--red);animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 /* main */
 main{padding:18px 22px 48px;min-width:0;max-width:1400px;margin:0 auto}
 @media (max-width:900px){main{padding:14px 16px 40px}}
@@ -230,7 +249,7 @@ details.allmeas[open] summary{margin-bottom:6px}
 /* status */
 .status{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
 .pill{font:600 11px var(--mono);padding:2px 8px;border-radius:999px;color:var(--bg)}
-.ok{background:var(--good)} .wait{background:var(--warn)} .no{background:var(--bad)}
+.pill.ok{background:var(--good)} .pill.wait{background:var(--warn)} .pill.no{background:var(--bad)}
 .check{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;align-items:start;margin:8px 0}
 .check div{font-size:13px}.check div small{color:var(--muted);display:block}
 /* dialog + toast */
@@ -392,8 +411,10 @@ dialog h2{color:var(--ink)}
       <input type="file" id="upFiles" multiple hidden accept=".r3d,.zip,.mov,.mp4,.m4v">
     </div>
     <ul class="flist" id="upList"></ul>
+    <ol class="steps" id="upSteps" hidden aria-label="Upload progress"><li data-s="up">Upload</li><li data-s="wait">Queued</li><li data-s="run">Analyzing</li><li data-s="done">Ready</li></ol>
     <div class="upbar" id="upBar" hidden><i></i></div>
-    <p class="upmsg" id="upMsg" role="status"></p>
+    <div class="upstate" id="upState" hidden><span class="spin" aria-hidden="true"></span><span id="upStateText"></span></div>
+    <div class="upmsg" id="upMsg" role="status"></div>
     <div class="phone" id="upPhone" hidden><div id="qr"></div><div>Or upload <b>from a phone</b> on the same Wi-Fi: scan the code or open<br><a id="upPhoneUrl" target="_blank"></a><br><span id="upDropHint"></span></div></div>
     <div class="dlgbtns"><button class="btn" value="cancel" formnovalidate>Close</button><button class="btn primary" id="upGo" value="go">Upload</button></div>
   </form>
@@ -842,7 +863,8 @@ async function openUpload(){
   const real=PROFILES.filter(p=>!p.synthetic);
   if(!real.length){toast("Create a hitter first");openProfile(null);return}
   $("#upHitter").innerHTML=real.map(p=>`<option value="${esc(p.name)}" ${p.id===PID?"selected":""}>${esc(p.name)}</option>`).join("");
-  upFiles=[];renderUpList();$("#upMsg").textContent="";$("#upMsg").className="upmsg";$("#upBar").hidden=true;
+  if(!JOB&&!upKeep){upFiles=[];renderUpList();upMsg("","");$("#upBar").hidden=true;$("#upSteps").hidden=true;$("#upState").hidden=true}
+  upKeep=false;                                                  // a failure stays visible until the dialog is opened once
   try{INFO=INFO||await fetch("api/info").then(r=>r.json())}catch(e){}
   const hint=()=>{const p=real.find(x=>x.name===$("#upHitter").value);$("#upDropHint").textContent=p&&p.drop_folder?`On this laptop you can also copy files into ${p.drop_folder}`:""};
   $("#upHitter").onchange=hint;hint();
@@ -856,17 +878,61 @@ $("#upFiles").onchange=e=>{upFiles=[...e.target.files];renderUpList()};
 ["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over")}));
 ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over")}));
 drop.addEventListener("drop",e=>{upFiles=[...e.dataTransfer.files];renderUpList()});
-$("#upGo").onclick=e=>{e.preventDefault();if(!upFiles.length)return;
-  const bad=upFiles.filter(f=>KIND(f.name)==="not a recording");if(bad.length){$("#upMsg").className="upmsg err";$("#upMsg").textContent=`${bad[0].name} is not a recording or a video`;return}
-  const fd=new FormData();upFiles.forEach(f=>fd.append("files",f));fd.append("hitter",$("#upHitter").value);fd.append("kind","auto");
-  const x=new XMLHttpRequest();x.open("POST","api/upload");$("#upBar").hidden=false;$("#upGo").disabled=true;
-  x.upload.onprogress=ev=>{if(ev.lengthComputable)$("#upBar i").style.width=(100*ev.loaded/ev.total)+"%"};
+/* One upload at a time is followed through the server's processing log (GET /api/status):
+   upload → queued (debounce) → analyzing → ready (the swing opens) or failed (the reason, in plain words). */
+let JOB=null,upKeep=false;
+function upMsg(cls,html){$("#upMsg").className="upmsg"+(cls?" "+cls:"");$("#upMsg").innerHTML=html}
+function upStep(s,fail){const order=["up","wait","run","done"],k=order.indexOf(s);$("#upSteps").hidden=false;
+  $("#upSteps").querySelectorAll("li").forEach((li,i)=>{li.className=i<k?"done":i===k?(fail?"fail":s==="done"?"done":"now"):""})}
+function upBusy(text,sub){$("#upState").hidden=!text;$("#upStateText").innerHTML=text?`${text}${sub?`<small>${sub}</small>`:""}`:""}
+const getStatus=()=>fetch("api/status").then(r=>{if(!r.ok)throw r.status;return r.json()});
+// Known failure reasons → what to do about them. Anything else is shown as it came, under "Details".
+function plainReason(raw){
+  if(/pose_landmarker|\.task\b/i.test(raw))return "The body-tracking model isn't installed on this laptop. Run <b>python scripts\\get_pose_model.py</b>, then upload the swing again.";
+  if(/no swing|swings found: 0|0 swings/i.test(raw))return "No swing was found in this recording. Check that the whole body is in frame and the swing is in the clip.";
+  if(/BadZipFile|not a zip/i.test(raw))return "This file isn't a complete recording (it may have been cut off while copying). Export it again from the phone and upload the new file.";
+  if(/depth|lzfse/i.test(raw))return "The LiDAR depth in this recording couldn't be read. Export it again from Record3D (RGBD export) and upload it.";
+  return "The analysis stopped with an error."}
+$("#upGo").onclick=async e=>{e.preventDefault();if(!upFiles.length||JOB)return;
+  const bad=upFiles.filter(f=>KIND(f.name)==="not a recording");if(bad.length){upMsg("err",`${esc(bad[0].name)} is not a recording or a video.`);return}
+  let before=null;try{before=(await getStatus()).last_run}catch(err){}
+  const hitter=$("#upHitter").value,stems=upFiles.map(f=>f.name.replace(/\.[^.]+$/,"")),total=upFiles.reduce((a,f)=>a+f.size,0);
+  const fd=new FormData();upFiles.forEach(f=>fd.append("files",f));fd.append("hitter",hitter);fd.append("kind","auto");
+  const x=new XMLHttpRequest();x.open("POST","api/upload");
+  JOB={hitter,stems,before};upMsg("","");upStep("up");$("#upBar").hidden=false;$("#upBar i").style.width="0";$("#upGo").disabled=true;
+  upBusy(`Uploading ${fmtMB(total)}…`,"Keep this window open until the upload finishes.");
+  x.upload.onprogress=ev=>{if(!ev.lengthComputable)return;const p=100*ev.loaded/ev.total;$("#upBar i").style.width=p+"%";
+    upBusy(p<100?`Uploading… ${Math.round(p)}%`:"Saving on the laptop…",`${fmtMB(ev.loaded)} of ${fmtMB(ev.total)}`)};
+  const failUpload=msg=>{JOB=null;$("#upBar").hidden=true;upBusy("");upStep("up",true);upMsg("err",msg);$("#upGo").disabled=false};
   x.onload=()=>{let d={};try{d=JSON.parse(x.responseText)}catch(err){}
-    if(x.status===200){$("#upMsg").className="upmsg ok";$("#upMsg").textContent=`Uploaded ${d.saved.length} file(s) for ${d.hitter||d.session}. Analysis starts in ${d.processing_in_s} s; the swing opens here when it is done (about a minute).`;
-      upFiles=[];renderUpList();$("#live").checked=true}
-    else{$("#upMsg").className="upmsg err";$("#upMsg").textContent=d.error||("Upload failed ("+x.status+")");$("#upGo").disabled=false}};
-  x.onerror=()=>{$("#upMsg").className="upmsg err";$("#upMsg").textContent="Upload failed: is the server still running?";$("#upGo").disabled=false};
+    if(x.status!==200){failUpload(esc(d.error||d.detail||`Upload failed (${x.status}).`));return}
+    upFiles=[];renderUpList();$("#upBar").hidden=true;$("#live").checked=true;
+    JOB.start=Date.now();JOB.wait=d.processing_in_s;upStep("wait");followJob()};
+  x.onerror=()=>failUpload("Upload failed: is the SwingLab server still running?");
   x.send(fd)};
+async function followJob(){
+  const j=JOB;if(!j)return;
+  let s;try{s=await getStatus()}catch(err){                   // older server without /api/status: the old message
+    JOB=null;upBusy("");upMsg("ok",`Uploaded for ${esc(j.hitter)}. The swing opens here when the analysis is done (about a minute).`);$("#upGo").disabled=false;return}
+  const secs=Math.round((Date.now()-j.start)/1000);
+  if(s.running){j.seen=true;upStep("run");upBusy(`Analyzing ${esc(j.hitter)}'s swing…`,`Finding the body, measuring the swing, writing the coach report · ${secs} s (usually about a minute)`)}
+  else if(!j.seen&&s.last_run===j.before){const left=j.wait!=null?Math.max(0,Math.ceil(j.wait-secs)):null;
+    upStep("wait");upBusy("Queued",left?`Analysis starts in ${left} s`:"Starting…")}
+  else{finishJob(j,s);return}
+  setTimeout(followJob,1500)}
+async function finishJob(j,s){
+  JOB=null;upBusy("");$("#upGo").disabled=false;
+  const mine=(s.results||[]).filter(r=>j.stems.some(st=>String(r.id||"").includes(st)));
+  const ok=mine.filter(r=>Object.values(r.stages||{}).some(Boolean));
+  if(ok.length){upStep("done");upMsg("ok",`Swing ready for ${esc(j.hitter)}. Opening it…`);
+    try{const d=await fetch("api/latest").then(r=>r.json());lastSeen=d.modified||lastSeen;await loadProfiles();
+      if(upDlg.open)upDlg.close();PID=null;go(`#hitter/${d.profile}`);await selectProfile(d.profile,d.file);tab("swing")}catch(err){}
+    toast(`New swing analyzed for ${j.hitter}`);return}
+  const line=(s.log||[]).slice().reverse().find(l=>/!!|ERROR/.test(l)&&(j.stems.some(st=>l.includes(st))||/ERROR/.test(l)))||"";
+  const raw=line.replace(/^\S+\s+/,"").replace(/^!!\s*/,"").trim();
+  upStep("run",true);
+  upMsg("err",`<b>${mine.length||raw?"This swing couldn't be analyzed.":"The analysis finished, but no swing came out of this upload."}</b><br>${plainReason(raw)}${raw?`<details><summary>Details</summary><code>${esc(raw)}</code></details>`:""}`);
+  if(!upDlg.open){upKeep=true;toast(`Couldn't analyze the swing for ${j.hitter}: open Upload swing for details`)}}
 
 /* ---------- live: show new swings as soon as they are analyzed ---------- */
 function toast(msg){const el=$("#toast");el.textContent=msg;el.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove("show"),3500)}

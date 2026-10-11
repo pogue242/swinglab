@@ -927,6 +927,15 @@ Contract changes between the tracks: `docs/CONTRACT_CHANGES.md`.
 
 ### 14 UI log
 (UI session: newest first.)
+- 2026-10-10: **upload dialog feedback** (team test). (1) The result message was green on green: the status
+  pills' bare `.ok/.wait/.no` classes leaked onto `.upmsg.ok`; pills are now `.pill.ok` etc. and messages are
+  themed cards (navy / green / red-50 with a colored left edge). (2) After "Uploaded…" nothing happened when the
+  analysis failed. The dialog now shows steps **Upload → Queued → Analyzing → Ready** with upload %, the queue
+  countdown, elapsed analysis time, then either opens the swing by itself or shows the failure in plain words
+  (missing pose model, broken/cut-off file, no swing found, unreadable depth) with the raw reason under
+  "Details". Also added a global `[hidden]{display:none!important}`. Checked on stand-in data: real failure
+  (bad .r3d) end to end, success path with mocked `/api/status`, 1366 px and 375 px. Root cause of the team's
+  stuck upload: `data\models\pose_landmarker_heavy.task` missing on that laptop (`python scripts\get_pose_model.py`).
 - 2026-10-10: **too many measurements** (item 9). The swing view now shows **Key measurements**: the focus
   measurement first, then the 5 with the biggest top-vs-bottom-third effect in the lab data (top hip speed, top
   chest speed, biggest hip–shoulder separation, hands out front, front leg straightening). Each row: value, a
