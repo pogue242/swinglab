@@ -1,7 +1,10 @@
 # Personal recordings and user data (never pushed)
 TestSet2/
+TestSet3/
+TestSet4/
 **/userdata/
 **/data/captures/
+**/data/captures.zip
 **/data/inbox/
 **/data/raw/
 **/data/processed/
