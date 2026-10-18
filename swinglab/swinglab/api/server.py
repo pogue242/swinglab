@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import datetime as dt
 import json
 import os
@@ -200,7 +201,12 @@ def create_app(inbox_root: str | Path | None = None, userdata: str | Path | None
     inbox_root = Path(inbox_root or (userdata / "inbox"))
     (userdata / "swings").mkdir(parents=True, exist_ok=True)
     (inbox_root / "sessions").mkdir(parents=True, exist_ok=True)
-    app = FastAPI(title="SwingLab")
+    @contextlib.asynccontextmanager
+    async def lifespan(app: FastAPI):
+        yield
+        app.state.live.disconnect()                   # released, the phone accepts the next server's connection
+
+    app = FastAPI(title="SwingLab", lifespan=lifespan)
     proc = Processor(inbox_root, userdata, analyze_recording, debounce_s, [Path(w) for w in (watch or [])], demo=demo)
     app.state.processor = proc
     (userdata / "drop").mkdir(parents=True, exist_ok=True)

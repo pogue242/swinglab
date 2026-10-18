@@ -1236,7 +1236,8 @@ async function finishJob(j,mine){
 /* ---------- record swing: the iPhone streams to the server; a whole session becomes one .r3d in the drop folder.
    The server ends the session by itself once the hitter has been still for a few seconds; then the upload
    dialog's steps follow the analysis like an upload. Closing the popup mid-session stops and saves it. ---------- */
-const recDlg=$("#recDlg");let REC_HITTER=null, recTimer=null, recState=null, recWaitingSave=false;
+const recDlg=$("#recDlg");let REC_HITTER=null, recTimer=null, recState=null, recWaitingSave=false, recConnectedAt=0;
+const REC_STALL_MS=4000;   // no video this long after connecting: the phone's stream stopped (or never started)
 const fmtClock=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,"0")}`;
 const postJSON=(url,body)=>fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body||{})})
   .then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||d.detail||`Request failed (${r.status})`);return d});
@@ -1250,6 +1251,7 @@ const openRecord=async()=>{
   try{renderRec(await postJSON("api/live/connect"))}
   catch(err){recState="offline";$("#recGo").disabled=false;$("#recGo").textContent="Try again";
     recInfo(`${err.message}. Then press Try again.`,true);return}
+  recConnectedAt=Date.now();
   $("#recImg").src="api/live/preview?t="+Date.now();
   clearInterval(recTimer);recTimer=setInterval(pollRec,500)};
 const pollRec=async()=>{try{renderRec(await fetch("api/live/status").then(r=>r.json()))}catch(e){recInfo("Lost the SwingLab server.",true)}};
@@ -1271,6 +1273,8 @@ function renderRec(s){
   if(s.state==="saved"&&s.saved&&recWaitingSave){recWaitingSave=false;handleRecSaved(s.saved);return}
   go.disabled=!s.connected;go.textContent="Start recording";
   if(s.state==="error"&&recWaitingSave){recWaitingSave=false;recInfo(`The session couldn't be saved: ${s.error}`,true);return}
+  if(!s.connected&&Date.now()-recConnectedAt>REC_STALL_MS){recState="offline";go.disabled=false;go.textContent="Try again";
+    recInfo("The iPhone stopped sending video. In Record3D, stop and restart USB streaming, then press Try again.",true);return}
   if($("#recInfo").classList.contains("err")&&s.connected)return;      // keep the last error until the next start
   recInfo(s.connected?"Ready. Press Start recording when you're in the box.":"Waiting for video from the iPhone…")}
 const handleRecToggle=async()=>{

@@ -213,7 +213,11 @@ def stream(buffer, on_frame=None, device_index: int = 0, on_stopped=None):
     s.on_new_frame = has_frame.set
     s.on_stream_stopped = stopped
     threading.Thread(target=consume, daemon=True).start()
-    s.connect(devs[device_index])
+    if s.connect(devs[device_index]) is False:   # the phone refuses a new connection until its stream is restarted
+        is_running.clear()
+        has_frame.set()
+        raise RuntimeError("the iPhone refused the connection: in Record3D, stop and restart USB streaming, "
+                           "then try again")
     return s
 
 
@@ -279,6 +283,8 @@ class LiveSession:
         self._connect = connect or stream
         self.lock = threading.Lock()
         self._stream = None
+        self._connected_at = 0.0
+        self._stream_id = 0
         self.is_streaming = False
         self.state = "idle"                 # idle | recording | saving | saved | error
         self.hitter: str | None = None
@@ -302,12 +308,35 @@ class LiveSession:
             self._ensure_stream()
 
     def _ensure_stream(self) -> None:
-        if self._stream is not None and self.is_streaming:
+        """Connect, or reconnect when the stream stopped or has sent nothing for STALE_S (a connection that
+        stalled or was refused would otherwise count as running forever)."""
+        is_fresh = time.time() - max(self.last_frame_t, self._connected_at) < self.STALE_S
+        if self._stream is not None and self.is_streaming and is_fresh:
             return
-        self._stream = self._connect(self, on_stopped=self._on_stream_stopped)
+        self._close_stream()
+        self._stream_id += 1
+        sid = self._stream_id               # a stop reported late by an old stream must not end the new one
+        self._stream = self._connect(self, on_stopped=lambda: self._on_stream_stopped(sid))
+        self._connected_at = time.time()
         self.is_streaming = True
 
-    def _on_stream_stopped(self) -> None:
+    def _close_stream(self) -> None:
+        s, self._stream, self.is_streaming = self._stream, None, False
+        close = getattr(s, "disconnect", None)
+        if close:
+            try:
+                close()
+            except Exception as e:
+                self.log(f"live: disconnect failed: {type(e).__name__}: {e}")
+
+    def disconnect(self) -> None:
+        """Release the phone (on server shutdown): it then accepts the next connection."""
+        with self.lock:
+            self._close_stream()
+
+    def _on_stream_stopped(self, sid: int | None = None) -> None:
+        if sid is not None and sid != self._stream_id:
+            return
         self.is_streaming = False
         self.log("live: phone stream stopped")
 
